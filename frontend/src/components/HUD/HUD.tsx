@@ -40,6 +40,39 @@ function getCycleStageInfo(label?: string): {
   };
 }
 
+function getBacteriaTier(pct: number): {
+  label: string;
+  className: 'low' | 'mid' | 'high' | 'max';
+  hint: string;
+} {
+  if (pct >= 90) {
+    return {
+      label: 'Mature colony',
+      className: 'max',
+      hint: 'Mature biofilter: ammonia and nitrite are processed quickly when load increases.',
+    };
+  }
+  if (pct >= 65) {
+    return {
+      label: 'Established colony',
+      className: 'high',
+      hint: 'Established bacteria colony: cycle is stable but can still dip under heavy feeding spikes.',
+    };
+  }
+  if (pct >= 35) {
+    return {
+      label: 'Growing colony',
+      className: 'mid',
+      hint: 'Bacteria population is growing: conversion is improving but not yet robust.',
+    };
+  }
+  return {
+    label: 'Seed stage',
+    className: 'low',
+    hint: 'Early colony stage: limited ammonia/nitrite conversion, high risk of spikes.',
+  };
+}
+
 export function HUD() {
   const profile = useGameStore(s => s.profile);
   const clearProfile = useGameStore(s => s.clearProfile);
@@ -81,6 +114,8 @@ export function HUD() {
     ? (tankSnapshot.cycled ? 100 : Math.max(0, Math.min(100, Math.round(tankSnapshot.bacteriaLevel * 100))))
     : 0;
   const cycleInfo = getCycleStageInfo(tankSnapshot?.cyclePhase.label);
+  const bacteriaPct = tankSnapshot ? Math.max(0, Math.min(100, Math.round(tankSnapshot.bacteriaLevel * 100))) : 0;
+  const bacteriaTier = getBacteriaTier(bacteriaPct);
 
   return (
     <div className="hud">
@@ -119,6 +154,7 @@ export function HUD() {
 
       {/* ── Water params strip ──────────────────────────────────────── */}
       {params && (
+        <>
         <div className="water-params-strip">
           <ParamBadge label="pH" value={params.ph.toFixed(1)} warn={params.ph < 6.5 || params.ph > 7.8} />
           <ParamBadge label="GH" value={`${params.gh.toFixed(1)}°`} warn={params.gh < 4} />
@@ -148,6 +184,17 @@ export function HUD() {
             </div>
           </div>
         </div>
+        <div className="bacteria-meter" title={bacteriaTier.hint} aria-label={`Beneficial bacteria ${bacteriaPct}%`}>
+          <div className="bacteria-meter-top">
+            <div className="bacteria-title">Beneficial Bacteria</div>
+            <div className="bacteria-percent">{bacteriaPct}%</div>
+          </div>
+          <div className="bacteria-progress-track">
+            <div className={`bacteria-progress-fill bacteria-${bacteriaTier.className}`} style={{ width: `${bacteriaPct}%` }} />
+          </div>
+          <div className={`bacteria-tier bacteria-tier-${bacteriaTier.className}`}>{bacteriaTier.label}</div>
+        </div>
+        </>
       )}
 
       {/* ── Actions bar ─────────────────────────────────────────────── */}

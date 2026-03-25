@@ -28,11 +28,25 @@ const PLANT_NITRATE_ABSORPTION = 0.005;
 export class NitrogenCycle {
   speedMultiplier = 1;
 
+  private getFilterSupport(tank: TankState): number {
+    switch (tank.filterType) {
+      case 'sponge_large':
+      case 'hob':
+        return 1.12;
+      case 'sponge':
+        return 1.0;
+      case 'none':
+      default:
+        return 0.68;
+    }
+  }
+
   /** Apply one game-hour of nitrogen cycle activity */
   tick(tank: TankState, gameHours = 1) {
     const p = tank.params;
     const hrs = gameHours * this.speedMultiplier;
     const shrimpCount = tank.shrimp.length;
+    const filterSupport = this.getFilterSupport(tank);
 
     // ── Step 1: Ammonia production ────────────────────────────────────────────
     // From uneaten food decay
@@ -51,28 +65,31 @@ export class NitrogenCycle {
     }
 
     // ── Step 2: Bacteria colony growth ───────────────────────────────────────
-    // Bacteria grow faster when food is abundant; limited to 1.0
-    const bacteriaGrowth = CONVERSION_RATES.bacteriaGrowthRate * hrs *
-      (p.ammonia > 0 ? 2 : 0.1);
+    // Growth is stronger with available ammonia and better filtration area.
+    const ammoniaFoodSignal = Math.min(2.2, Math.max(0.2, 0.35 + p.ammonia * 3));
+    const loadSignal = Math.min(1.25, 0.8 + shrimpCount * 0.02);
+    const bacteriaGrowth = CONVERSION_RATES.bacteriaGrowthRate * hrs * ammoniaFoodSignal * loadSignal * filterSupport;
     tank.bacteriaLevel = Math.min(1, tank.bacteriaLevel + bacteriaGrowth);
 
     // ── Step 3: Bacteria starter dose effect ──────────────────────────────────
     // (Applied via addBacteriaStarter — not here per tick)
 
     // ── Step 4: Ammonia → Nitrite (Nitrosomonas) ─────────────────────────────
+    const ammoniaColonyEfficiency = Math.min(1.2, tank.bacteriaLevel * filterSupport);
     const ammConversion = Math.min(
       p.ammonia,
-      p.ammonia * CONVERSION_RATES.ammoniaToNitrite * tank.bacteriaLevel * hrs
+      p.ammonia * CONVERSION_RATES.ammoniaToNitrite * ammoniaColonyEfficiency * hrs
     );
     p.ammonia -= ammConversion;
     p.nitrite += ammConversion;
 
     // ── Step 5: Nitrite → Nitrate (Nitrospira — slightly slower to establish) ─
     // Nitrospira lag — only active after bacteria level > 0.3
-    if (tank.bacteriaLevel > 0.3) {
+    if (tank.bacteriaLevel > 0.25) {
+      const nitriteColonyEfficiency = Math.min(1.15, Math.max(0, (tank.bacteriaLevel - 0.25) / 0.75) * filterSupport);
       const nitriteConversion = Math.min(
         p.nitrite,
-        p.nitrite * CONVERSION_RATES.nitriteToNitrate * (tank.bacteriaLevel - 0.3) / 0.7 * hrs
+        p.nitrite * CONVERSION_RATES.nitriteToNitrate * nitriteColonyEfficiency * hrs
       );
       p.nitrite -= nitriteConversion;
       p.nitrate += nitriteConversion;
