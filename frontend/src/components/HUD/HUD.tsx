@@ -5,6 +5,41 @@ import { SPEED_OPTIONS } from '../../game/data/gameConfig';
 import type { SpeedMultiplier } from '../../game/data/gameConfig';
 import { getGame, GAME_EVENTS } from '../../game/ShrimpGame';
 
+function getCycleStageInfo(label?: string): {
+  stageKey: 'cycled' | 'ammonia' | 'nitrite-spike' | 'nitrite-peak' | 'progress';
+  hint: string;
+} {
+  const text = (label ?? '').toLowerCase();
+  if (text.includes('cycled')) {
+    return {
+      stageKey: 'cycled',
+      hint: 'Cycle complete: ammonia and nitrite are near zero while beneficial bacteria are established.',
+    };
+  }
+  if (text.includes('phase 1') || text.includes('ammonia')) {
+    return {
+      stageKey: 'ammonia',
+      hint: 'Phase 1: ammonia rises first as waste breaks down. Keep feeding light and monitor daily.',
+    };
+  }
+  if (text.includes('phase 2') || text.includes('nitrite spike')) {
+    return {
+      stageKey: 'nitrite-spike',
+      hint: 'Phase 2: ammonia starts dropping while nitrite climbs as bacteria convert ammonia.',
+    };
+  }
+  if (text.includes('phase 3') || text.includes('nitrite peak')) {
+    return {
+      stageKey: 'nitrite-peak',
+      hint: 'Phase 3: nitrite peaks, then declines as second-stage bacteria convert it to nitrate.',
+    };
+  }
+  return {
+    stageKey: 'progress',
+    hint: 'Cycling in progress: bacteria are still establishing. Stability improves as this meter fills.',
+  };
+}
+
 export function HUD() {
   const profile = useGameStore(s => s.profile);
   const clearProfile = useGameStore(s => s.clearProfile);
@@ -42,6 +77,10 @@ export function HUD() {
   const params = tankSnapshot?.params;
   const gameDay = tankSnapshot ? Math.floor(tankSnapshot.gameAge / 1440) : 0;
   const gameHour = tankSnapshot ? Math.floor((tankSnapshot.gameAge % 1440) / 60) : 0;
+  const cycleProgressPct = tankSnapshot
+    ? (tankSnapshot.cycled ? 100 : Math.max(0, Math.min(100, Math.round(tankSnapshot.bacteriaLevel * 100))))
+    : 0;
+  const cycleInfo = getCycleStageInfo(tankSnapshot?.cyclePhase.label);
 
   return (
     <div className="hud">
@@ -89,8 +128,24 @@ export function HUD() {
           <ParamBadge label="NH₃" value={`${params.ammonia.toFixed(2)}`} warn={params.ammonia > 0.25} danger={params.ammonia > 0.5} />
           <ParamBadge label="NO₂" value={`${params.nitrite.toFixed(2)}`} warn={params.nitrite > 0.25} danger={params.nitrite > 0.5} />
           <ParamBadge label="NO₃" value={`${params.nitrate.toFixed(1)}`} warn={params.nitrate > 20} danger={params.nitrate > 40} />
-          <div className="cycle-badge" style={{ color: tankSnapshot?.cyclePhase.colorHex }}>
-            {tankSnapshot?.cyclePhase.label}
+          <div
+            className={`cycle-meter cycle-stage-${cycleInfo.stageKey}`}
+            aria-label={`Cycle progress ${cycleProgressPct}%`}
+            title={cycleInfo.hint}
+          >
+            <div className="cycle-meter-top">
+              <div className="cycle-badge" style={{ color: tankSnapshot?.cyclePhase.colorHex }}>
+                {tankSnapshot?.cyclePhase.label}
+              </div>
+              <span className="cycle-help" title={cycleInfo.hint} aria-label="Cycle phase help">i</span>
+              <div className="cycle-percent">{cycleProgressPct}%</div>
+            </div>
+            <div className="cycle-progress-track">
+              <div
+                className="cycle-progress-fill"
+                style={{ width: `${cycleProgressPct}%`, backgroundColor: tankSnapshot?.cyclePhase.colorHex }}
+              />
+            </div>
           </div>
         </div>
       )}
