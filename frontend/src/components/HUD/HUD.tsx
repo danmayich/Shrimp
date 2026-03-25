@@ -73,6 +73,21 @@ function getBacteriaTier(pct: number): {
   };
 }
 
+function getCycleProgressPct(snapshot: NonNullable<ReturnType<typeof useGameStore.getState>['tankSnapshot']>): number {
+  if (snapshot.cycled) return 100;
+
+  // Cycle completion is influenced by colony size, but unresolved ammonia/nitrite
+  // should keep this meter below 100 until the tank is truly cycled.
+  const colonyScore = Math.max(0, Math.min(1, snapshot.bacteriaLevel));
+  const ammoniaPenalty = Math.min(0.35, snapshot.params.ammonia / 2);
+  const nitritePenalty = Math.min(0.35, snapshot.params.nitrite / 2);
+  const nitrateBonus = snapshot.params.nitrate > 0 ? 0.05 : 0;
+
+  const weighted = colonyScore * 0.9 + nitrateBonus - (ammoniaPenalty + nitritePenalty);
+  const pct = Math.round(Math.max(0.05, Math.min(0.95, weighted)) * 100);
+  return Math.min(95, pct);
+}
+
 export function HUD() {
   const profile = useGameStore(s => s.profile);
   const clearProfile = useGameStore(s => s.clearProfile);
@@ -110,9 +125,7 @@ export function HUD() {
   const params = tankSnapshot?.params;
   const gameDay = tankSnapshot ? Math.floor(tankSnapshot.gameAge / 1440) : 0;
   const gameHour = tankSnapshot ? Math.floor((tankSnapshot.gameAge % 1440) / 60) : 0;
-  const cycleProgressPct = tankSnapshot
-    ? (tankSnapshot.cycled ? 100 : Math.max(0, Math.min(100, Math.round(tankSnapshot.bacteriaLevel * 100))))
-    : 0;
+  const cycleProgressPct = tankSnapshot ? getCycleProgressPct(tankSnapshot) : 0;
   const cycleInfo = getCycleStageInfo(tankSnapshot?.cyclePhase.label);
   const bacteriaPct = tankSnapshot ? Math.max(0, Math.min(100, Math.round(tankSnapshot.bacteriaLevel * 100))) : 0;
   const bacteriaTier = getBacteriaTier(bacteriaPct);
