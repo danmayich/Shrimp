@@ -49,6 +49,8 @@ interface GameState {
   updateActiveTankParams: (params: Partial<WaterParams>) => void;
   addPlantToActiveTank: (itemId: string, coverIncrease: number) => TankState | null;
   updatePlantPositionInActiveTank: (plantId: string, x: number, y: number) => void;
+  installFilterInActiveTank: (filterType: TankState['filterType']) => TankState | null;
+  updateFilterPositionInActiveTank: (x: number, y: number) => void;
 
   // Shrimp management
   addShrimpToActiveTank: (variantId: string, count?: number) => ShrimpState[];
@@ -204,6 +206,7 @@ export const useGameStore = create<GameState>()(
           tannins: 0,
           plantCoverScore: 0,
           biofilmLevel: 0,
+          filterVisual: null,
           plants: [],
           shrimp: [],
           gameAge: 0,
@@ -302,6 +305,58 @@ export const useGameStore = create<GameState>()(
                 plants: (t.plants ?? []).map(plant =>
                   plant.id === plantId ? { ...plant, x, y } : plant
                 ),
+              };
+            }),
+          },
+        });
+      },
+
+      installFilterInActiveTank: (filterType) => {
+        const p = get().profile;
+        if (!p || !p.activeTankId) return null;
+
+        const tank = p.tanks.find(t => t.id === p.activeTankId);
+        if (!tank) return null;
+
+        const dims = { width: tank.gallons * 16 + 480, height: 320 };
+        const substrateY = Math.floor(dims.height * 0.85);
+        const existingVisual = tank.filterVisual;
+        const defaultVisual = {
+          x: Math.round(dims.width * 0.82),
+          y: substrateY + 4,
+        };
+
+        let updatedTank: TankState | null = null;
+        set({
+          profile: {
+            ...p,
+            tanks: p.tanks.map(t => {
+              if (t.id !== p.activeTankId) return t;
+              updatedTank = {
+                ...t,
+                filterType,
+                filterVisual: existingVisual ? { ...existingVisual } : defaultVisual,
+              };
+              return updatedTank;
+            }),
+          },
+        });
+
+        return updatedTank;
+      },
+
+      updateFilterPositionInActiveTank: (x, y) => {
+        const p = get().profile;
+        if (!p || !p.activeTankId) return;
+
+        set({
+          profile: {
+            ...p,
+            tanks: p.tanks.map(t => {
+              if (t.id !== p.activeTankId) return t;
+              return {
+                ...t,
+                filterVisual: { x, y },
               };
             }),
           },

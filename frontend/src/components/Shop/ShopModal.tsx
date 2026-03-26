@@ -5,6 +5,7 @@ import { STORE_BY_CATEGORY, STORE_ITEMS } from '../../game/data/storeItems';
 import { SHRIMP_VARIANTS } from '../../game/data/shrimpVariants';
 import type { StoreItem } from '../../game/data/storeItems';
 import { getGame, GAME_EVENTS } from '../../game/ShrimpGame';
+import type { FilterType } from '../../game/types';
 
 const CATEGORIES = [
   { id: 'tanks', label: '🪣 Tanks' },
@@ -23,6 +24,7 @@ export function ShopModal() {
   const purchaseTank = useGameStore(s => s.purchaseTank);
   const addShrimpToActiveTank = useGameStore(s => s.addShrimpToActiveTank);
   const addPlantToActiveTank = useGameStore(s => s.addPlantToActiveTank);
+  const installFilterInActiveTank = useGameStore(s => s.installFilterInActiveTank);
   const addInventoryItem = useGameStore(s => s.addInventoryItem);
   const notify = useUIStore(s => s.pushNotification);
 
@@ -53,7 +55,7 @@ export function ShopModal() {
     }
 
     if (item.category === 'plants') {
-      if (!profile.activeTankId) {
+      if (!profile!.activeTankId) {
         notify('Set up a tank first before adding plants.', 'warning');
         return;
       }
@@ -65,6 +67,33 @@ export function ShopModal() {
           getGame()?.events.emit(GAME_EVENTS.SET_TANK, updatedTank);
         }
         notify(`Added ${item.name}. Plant cover increased (+${cover}).`, 'success');
+        closeModal();
+      }
+      setConfirmItem(null);
+      return;
+    }
+
+    if (item.category === 'equipment') {
+      const filterType = item.meta?.filterType as FilterType | undefined;
+
+      if (filterType && !profile!.activeTankId) {
+        notify('Set up a tank first before installing filtration.', 'warning');
+        return;
+      }
+
+      if (deductCash(item.price)) {
+        addInventoryItem(item.id);
+
+        if (filterType) {
+          const updatedTank = installFilterInActiveTank(filterType);
+          if (updatedTank) {
+            getGame()?.events.emit(GAME_EVENTS.SET_TANK, updatedTank);
+          }
+          notify(`Installed ${item.name} in your active tank.`, 'success');
+        } else {
+          notify(`Purchased ${item.name}`, 'success');
+        }
+
         closeModal();
       }
       setConfirmItem(null);

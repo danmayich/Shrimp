@@ -23,11 +23,15 @@ const STORE_ITEM_NAME_BY_ID = new Map(STORE_ITEMS.map(i => [i.id, i.name]));
 const PLANT_RENDER_SCALE_MULTIPLIER = 1.4;
 const PLANT_DRAG_TOP_PADDING = 12;
 const PLANT_DRAG_BOTTOM_PADDING = 6;
+const FILTER_DRAG_TOP_PADDING = 10;
+const FILTER_DRAG_BOTTOM_PADDING = 8;
 
 export class TankScene extends Phaser.Scene {
   private tank!: TankState;
   private shrimpSprites: Map<string, ShrimpSprite> = new Map();
   private plantSprites: Map<string, Phaser.GameObjects.Image> = new Map();
+  private filterSprite: Phaser.GameObjects.Image | null = null;
+  private filterBubbleEvent: Phaser.Time.TimerEvent | null = null;
   private foodSprites: Map<string, Phaser.GameObjects.Image> = new Map();
   private foodParticles: FoodParticleState[] = [];
   private bubbleParticles: Phaser.GameObjects.Image[] = [];
@@ -46,6 +50,7 @@ export class TankScene extends Phaser.Scene {
   private tankH = 0;
   private pinnedTooltipTarget: { kind: 'shrimp' | 'plant'; id: string } | null = null;
   private draggingPlantId: string | null = null;
+  private draggingFilter = false;
 
   constructor() {
     super({ key: 'TankScene' });
@@ -93,9 +98,12 @@ export class TankScene extends Phaser.Scene {
     this.children.removeAll(true);
     this.shrimpSprites.clear();
     this.plantSprites.clear();
+    this.filterSprite = null;
     this.foodSprites.clear();
     this.foodParticles = [];
     this.draggingPlantId = null;
+    this.draggingFilter = false;
+    this.stopFilterBubbleEmitter();
     this.clearPinnedTooltip();
 
     // Resize the Phaser canvas
@@ -118,10 +126,8 @@ export class TankScene extends Phaser.Scene {
     // Plants (rendered before shrimp so shrimp can swim above)
     this.renderPlants();
 
-    // Water bubbles (ambient) from filter
-    if (tank.filterType !== 'none') {
-      this.spawnBubbleEmitter();
-    }
+    // Equipment visual
+    this.renderFilter();
 
     // Glass glare
     const glareKey = `glass_glare_${tank.gallons}`;
@@ -364,6 +370,7 @@ export class TankScene extends Phaser.Scene {
     return {
       ...tank,
       params: { ...tank.params },
+      filterVisual: tank.filterVisual ? { ...tank.filterVisual } : null,
       plants: (tank.plants ?? []).map(plant => ({ ...plant })),
       shrimp: tank.shrimp.map(shrimp => ({ ...shrimp })),
     };
@@ -389,14 +396,121 @@ export class TankScene extends Phaser.Scene {
     };
   }
 
+  private getFilterDragBounds(sprite: Phaser.GameObjects.Image) {
+    const displayWidth = sprite.width * Math.abs(sprite.scaleX);
+    const displayHeight = sprite.height * Math.abs(sprite.scaleY);
+    const minX = Math.ceil(displayWidth / 2);
+    const maxX = Math.floor(this.tankW - displayWidth / 2);
+    const minY = Math.ceil(displayHeight + FILTER_DRAG_TOP_PADDING);
+    const maxY = Math.floor(this.substrateY + FILTER_DRAG_BOTTOM_PADDING);
+
+    return {
+      minX,
+      maxX,
+      minY: Math.min(minY, maxY),
+      maxY,
+    };
+  }
+
   private isPlantObject(gameObject: Phaser.GameObjects.GameObject): gameObject is Phaser.GameObjects.Image {
     return gameObject instanceof Phaser.GameObjects.Image && gameObject.getData('tooltipKind') === 'plant';
+  }
+
+  private isFilterObject(gameObject: Phaser.GameObjects.GameObject): gameObject is Phaser.GameObjects.Image {
+    return gameObject instanceof Phaser.GameObjects.Image && gameObject.getData('draggableKind') === 'filter';
+  }
+
+  private getFilterTextureKey() {
+    if (this.tank.filterType === 'sponge_large') return 'filter_sponge_large';
+    if (this.tank.filterType === 'sponge') return 'filter_sponge_small';
+    return null;
+  }
+
+  private getFilterDefaultPosition() {
+    return {
+      x: Math.round(this.tankW * 0.82),
+      y: this.substrateY + 4,
+    };
+  }
+
+  private ensureFilterPosition() {
+    if (!this.tank.filterVisual) {
+      this.tank.filterVisual = this.getFilterDefaultPosition();
+    }
+    return this.tank.filterVisual;
+  }
+
+  private renderFilter() {
+    this.filterSprite?.destroy();
+    this.filterSprite = null;
+    this.stopFilterBubbleEmitter();
+
+    const textureKey = this.getFilterTextureKey();
+    if (!textureKey) return;
+
+    const pos = this.ensureFilterPosition();
+    const sprite = this.add.image(pos.x, pos.y, textureKey).setOrigin(0.5, 1);
+    sprite.setData('draggableKind', 'filter');
+    sprite.setInteractive({ useHandCursor: true, pixelPerfect: true });
+    this.input.setDraggable(sprite);
+
+    this.filterSprite = sprite;
+    this.startFilterBubbleEmitter();
+  }
+
+  private getFilterBubbleOrigin() {
+    if (!this.filterSprite) return null;
+    const bubbleX = this.filterSprite.x;
+    const bubbleY = this.filterSprite.y - this.filterSprite.displayHeight + 4;
+    return { x: bubbleX, y: bubbleY };
+  }
+
+  private startFilterBubbleEmitter() {
+    this.stopFilterBubbleEmitter();
+    const textureKey = this.getFilterTextureKey();
+    if (!this.filterSprite || !textureKey) return;
+
+    const delay = this.tank.filterType === 'sponge_large' ? 180 : 240;
+    this.filterBubbleEvent = this.time.addEvent({
+      delay,
+      loop: true,
+      callback: () => {
+        const origin = this.getFilterBubbleOrigin();
+        if (!origin) return;
+
+        const b = this.add.image(
+          origin.x + Phaser.Math.Between(-3, 3),
+          origin.y + Phaser.Math.Between(-2, 1),
+          'bubble'
+        );
+        const topY = Phaser.Math.Between(4, 10);
+        const travelDistance = Math.max(16, b.y - topY);
+        this.tweens.add({
+          targets: b,
+          y: topY,
+          x: origin.x + Phaser.Math.Between(-16, 16),
+          alpha: { from: 0.8, to: 0 },
+          duration: 900 + travelDistance * 14,
+          onComplete: () => b.destroy(),
+        });
+      },
+    });
+  }
+
+  private stopFilterBubbleEmitter() {
+    this.filterBubbleEvent?.remove();
+    this.filterBubbleEvent = null;
   }
 
   private handleDragStart(
     _pointer: Phaser.Input.Pointer,
     gameObject: Phaser.GameObjects.GameObject,
   ) {
+    if (this.isFilterObject(gameObject)) {
+      this.draggingFilter = true;
+      return;
+    }
+
     if (!this.isPlantObject(gameObject)) return;
 
     const plantId = gameObject.getData('tooltipId') as string | undefined;
@@ -412,6 +526,15 @@ export class TankScene extends Phaser.Scene {
     dragX: number,
     dragY: number,
   ) {
+    if (this.isFilterObject(gameObject)) {
+      const bounds = this.getFilterDragBounds(gameObject);
+      const nextX = Math.round(Phaser.Math.Clamp(dragX, bounds.minX, bounds.maxX));
+      const nextY = Math.round(Phaser.Math.Clamp(dragY, bounds.minY, bounds.maxY));
+      gameObject.setPosition(nextX, nextY);
+      this.tank.filterVisual = { x: nextX, y: nextY };
+      return;
+    }
+
     if (!this.isPlantObject(gameObject)) return;
 
     const plantId = gameObject.getData('tooltipId') as string | undefined;
@@ -438,6 +561,15 @@ export class TankScene extends Phaser.Scene {
     _pointer: Phaser.Input.Pointer,
     gameObject: Phaser.GameObjects.GameObject,
   ) {
+    if (this.isFilterObject(gameObject)) {
+      this.draggingFilter = false;
+      this.game.events.emit(GAME_EVENTS.FILTER_MOVED, {
+        x: Math.round(gameObject.x),
+        y: Math.round(gameObject.y),
+      });
+      return;
+    }
+
     if (!this.isPlantObject(gameObject)) return;
 
     const plantId = gameObject.getData('tooltipId') as string | undefined;
@@ -480,26 +612,6 @@ export class TankScene extends Phaser.Scene {
     if (plants.length === 0) {
       this.hidePlantTooltip();
     }
-  }
-
-  private spawnBubbleEmitter() {
-    // Simple tween-based bubbles rising from filter area
-    const emitBubble = () => {
-      const b = this.add.image(
-        this.tankW * 0.85 + Math.random() * 20,
-        this.substrateY - 10,
-        'bubble'
-      );
-      this.tweens.add({
-        targets: b,
-        y: 20,
-        x: b.x + (Math.random() - 0.5) * 30,
-        alpha: { from: 0.7, to: 0 },
-        duration: 3000 + Math.random() * 2000,
-        onComplete: () => b.destroy(),
-      });
-    };
-    this.time.addEvent({ delay: 600, loop: true, callback: emitBubble });
   }
 
   update(_time: number, delta: number) {
@@ -706,6 +818,7 @@ export class TankScene extends Phaser.Scene {
   }
 
   shutdown() {
+    this.stopFilterBubbleEmitter();
     this.emitTooltip(null);
   }
 }

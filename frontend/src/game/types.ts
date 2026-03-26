@@ -26,6 +26,11 @@ export interface PlantState {
   scale: number;
 }
 
+export interface FilterVisualState {
+  x: number;
+  y: number;
+}
+
 export interface TankState {
   id: string;
   ownerId: string;
@@ -53,6 +58,7 @@ export interface TankState {
   tannins: number;      // 0..1 affects pH slightly
   plantCoverScore: number;  // 0..20 affects hiding/biofilm
   biofilmLevel: number;     // 0..1 fed by biofilm powder + plants + time
+  filterVisual: FilterVisualState | null;
   plants: PlantState[];
   shrimp: ShrimpState[];
   /** Game timestamp (game minutes elapsed since tank creation) */

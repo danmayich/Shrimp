@@ -31,6 +31,7 @@ export class BootScene extends Phaser.Scene {
     this.generateAllTextures();
     this.generateTankTextures();
     this.generatePlantTextures();
+    this.generateEquipmentTextures();
     this.generateParticleTextures();
     this.scene.start('TankScene');
   }
@@ -258,6 +259,68 @@ export class BootScene extends Phaser.Scene {
       ctx.fillRect(15, 7, 1, 5);
 
       this.textures.addCanvas('plant_anubias', c);
+    }
+  }
+
+  private generateEquipmentTextures() {
+    if (!this.textures.exists('filter_sponge_small')) {
+      const c = document.createElement('canvas');
+      c.width = 24;
+      c.height = 36;
+      const ctx = c.getContext('2d')!;
+
+      // Base and sponge body
+      ctx.fillStyle = '#2c2c2e';
+      ctx.fillRect(8, 32, 8, 3);
+      ctx.fillStyle = '#303236';
+      ctx.fillRect(6, 19, 12, 13);
+
+      // Sponge pores for texture
+      ctx.fillStyle = '#1f2022';
+      for (let y = 21; y < 31; y += 2) {
+        for (let x = 7; x < 17; x += 3) {
+          ctx.fillRect(x, y, 1, 1);
+        }
+      }
+
+      // Lift tube and outlet
+      ctx.fillStyle = '#7f858d';
+      ctx.fillRect(11, 4, 2, 15);
+      ctx.fillStyle = '#969da6';
+      ctx.fillRect(9, 2, 6, 3);
+
+      this.textures.addCanvas('filter_sponge_small', c);
+    }
+
+    if (!this.textures.exists('filter_sponge_large')) {
+      const c = document.createElement('canvas');
+      c.width = 34;
+      c.height = 38;
+      const ctx = c.getContext('2d')!;
+
+      // Base and twin sponge blocks
+      ctx.fillStyle = '#2b2b2d';
+      ctx.fillRect(10, 33, 14, 3);
+      ctx.fillStyle = '#2f3136';
+      ctx.fillRect(5, 20, 10, 13);
+      ctx.fillRect(19, 20, 10, 13);
+
+      // Sponge pores
+      ctx.fillStyle = '#1f2022';
+      for (let y = 22; y < 32; y += 2) {
+        for (let x = 6; x < 28; x += 3) {
+          if (x === 16 || x === 17) continue;
+          ctx.fillRect(x, y, 1, 1);
+        }
+      }
+
+      // Center riser tube and outlet cap
+      ctx.fillStyle = '#818893';
+      ctx.fillRect(16, 5, 2, 15);
+      ctx.fillStyle = '#9aa1ab';
+      ctx.fillRect(13, 3, 8, 3);
+
+      this.textures.addCanvas('filter_sponge_large', c);
     }
   }
 }
