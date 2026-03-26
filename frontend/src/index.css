@@ -328,6 +328,123 @@
     row-gap: 5px;
   }
 
+  .param-meter-grid {
+    display: flex;
+    align-items: flex-end;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .param-meter {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    width: 44px;
+  }
+  .param-meter-label-row {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .param-meter-label {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-secondary);
+    line-height: 1;
+  }
+  .param-meter-help {
+    width: 13px;
+    height: 13px;
+    border-radius: 999px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 8px;
+    font-weight: 700;
+    color: var(--text-secondary);
+    border: 1px solid rgba(122, 168, 204, 0.45);
+    background: rgba(7, 24, 40, 0.65);
+    cursor: help;
+    flex-shrink: 0;
+  }
+  .param-meter-track {
+    position: relative;
+    width: 24px;
+    height: 92px;
+    border-radius: 999px;
+    border: 1px solid rgba(74, 173, 255, 0.28);
+    overflow: hidden;
+    background-color: rgba(4, 14, 26, 0.45);
+    box-shadow: inset 0 0 0 1px rgba(7, 24, 40, 0.6);
+  }
+  .param-meter-fill {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    border-radius: 999px;
+    transition: height 240ms ease;
+  }
+  .param-meter-fill.meter-ok {
+    background: linear-gradient(to top, rgba(81, 207, 102, 0.45), rgba(81, 207, 102, 0.15));
+  }
+  .param-meter-fill.meter-warn {
+    background: linear-gradient(to top, rgba(255, 212, 59, 0.5), rgba(255, 212, 59, 0.18));
+  }
+  .param-meter-fill.meter-danger {
+    background: linear-gradient(to top, rgba(255, 107, 107, 0.55), rgba(255, 107, 107, 0.2));
+  }
+  .param-meter-indicator {
+    position: absolute;
+    left: -3px;
+    right: -3px;
+    height: 2px;
+    border-radius: 4px;
+    transform: translateY(50%);
+    box-shadow: 0 0 8px currentColor;
+  }
+  .param-meter-indicator.meter-ok {
+    background: #69db7c;
+    color: #69db7c;
+  }
+  .param-meter-indicator.meter-warn {
+    background: #ffd43b;
+    color: #ffd43b;
+  }
+  .param-meter-indicator.meter-danger {
+    background: #ff6b6b;
+    color: #ff6b6b;
+  }
+  .param-meter-value {
+    font-size: 10.5px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    color: var(--text-primary);
+    line-height: 1;
+    white-space: nowrap;
+  }
+
+  @media (max-width: 900px) {
+    .param-meter { width: 40px; }
+    .param-meter-track { height: 82px; width: 22px; }
+  }
+
+  @media (max-width: 640px) {
+    .param-meter-grid {
+      width: 100%;
+      justify-content: space-between;
+    }
+  }
+
+  /* legacy pulse kept for other warning visuals */
+  @keyframes pulse-danger {
+    0%, 100% { box-shadow: none; }
+    50% { box-shadow: 0 0 10px rgba(255, 107, 107, 0.4); }
+  }
+
+  /* legacy param badge styles retained as fallback */
   .param-badge {
     display: flex;
     flex-direction: column;

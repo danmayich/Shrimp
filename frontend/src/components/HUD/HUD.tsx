@@ -88,6 +88,54 @@ function getCycleProgressPct(snapshot: NonNullable<ReturnType<typeof useGameStor
   return Math.min(95, pct);
 }
 
+type MeterStatus = 'ok' | 'warn' | 'danger';
+
+interface MeterConfig {
+  key: string;
+  label: string;
+  fullName: string;
+  tooltip: string;
+  value: number;
+  min: number;
+  max: number;
+  warnMin: number;
+  idealMin: number;
+  idealMax: number;
+  warnMax: number;
+  decimals?: number;
+  suffix?: string;
+}
+
+function clamp(n: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, n));
+}
+
+function getMeterStatus(value: number, cfg: MeterConfig): MeterStatus {
+  if (value < cfg.warnMin || value > cfg.warnMax) return 'danger';
+  if (value < cfg.idealMin || value > cfg.idealMax) return 'warn';
+  return 'ok';
+}
+
+function getRangeGradient(cfg: MeterConfig): string {
+  const toTop = (v: number) => 100 - ((clamp(v, cfg.min, cfg.max) - cfg.min) / (cfg.max - cfg.min)) * 100;
+  const pWarnMax = toTop(cfg.warnMax);
+  const pIdealMax = toTop(cfg.idealMax);
+  const pIdealMin = toTop(cfg.idealMin);
+  const pWarnMin = toTop(cfg.warnMin);
+
+  return `linear-gradient(to top,
+    rgba(255,107,107,0.35) 0%,
+    rgba(255,107,107,0.35) ${100 - pWarnMin}%,
+    rgba(255,212,59,0.35) ${100 - pWarnMin}%,
+    rgba(255,212,59,0.35) ${100 - pIdealMin}%,
+    rgba(81,207,102,0.35) ${100 - pIdealMin}%,
+    rgba(81,207,102,0.35) ${100 - pIdealMax}%,
+    rgba(255,212,59,0.35) ${100 - pIdealMax}%,
+    rgba(255,212,59,0.35) ${100 - pWarnMax}%,
+    rgba(255,107,107,0.35) ${100 - pWarnMax}%,
+    rgba(255,107,107,0.35) 100%)`;
+}
+
 export function HUD() {
   const profile = useGameStore(s => s.profile);
   const clearProfile = useGameStore(s => s.clearProfile);
@@ -129,6 +177,124 @@ export function HUD() {
   const cycleInfo = getCycleStageInfo(tankSnapshot?.cyclePhase.label);
   const bacteriaPct = tankSnapshot ? Math.max(0, Math.min(100, Math.round(tankSnapshot.bacteriaLevel * 100))) : 0;
   const bacteriaTier = getBacteriaTier(bacteriaPct);
+  const paramMeters: MeterConfig[] = params ? [
+    {
+      key: 'ph',
+      label: 'pH',
+      fullName: 'Acidity / Alkalinity',
+      tooltip: 'pH measures how acidic or alkaline the water is. Stable pH keeps shrimp healthy and lowers stress.',
+      value: params.ph,
+      min: 5.5,
+      max: 8.5,
+      warnMin: 6.2,
+      idealMin: 6.5,
+      idealMax: 7.8,
+      warnMax: 8.1,
+      decimals: 1,
+    },
+    {
+      key: 'gh',
+      label: 'GH',
+      fullName: 'General Hardness',
+      tooltip: 'GH is dissolved calcium and magnesium. Shrimp need enough GH for healthy molts and shell development.',
+      value: params.gh,
+      min: 0,
+      max: 14,
+      warnMin: 2,
+      idealMin: 4,
+      idealMax: 10,
+      warnMax: 12,
+      decimals: 1,
+      suffix: '°',
+    },
+    {
+      key: 'kh',
+      label: 'KH',
+      fullName: 'Carbonate Hardness',
+      tooltip: 'KH is buffering capacity. It helps prevent sudden pH swings that can shock shrimp.',
+      value: params.kh,
+      min: 0,
+      max: 8,
+      warnMin: 1,
+      idealMin: 2,
+      idealMax: 6,
+      warnMax: 7,
+      decimals: 1,
+      suffix: '°',
+    },
+    {
+      key: 'tds',
+      label: 'TDS',
+      fullName: 'Total Dissolved Solids',
+      tooltip: 'TDS is the total concentration of dissolved minerals and organics in the water.',
+      value: params.tds,
+      min: 50,
+      max: 400,
+      warnMin: 100,
+      idealMin: 140,
+      idealMax: 260,
+      warnMax: 320,
+      decimals: 0,
+      suffix: 'ppm',
+    },
+    {
+      key: 'temp',
+      label: 'Temp',
+      fullName: 'Temperature',
+      tooltip: 'Water temperature affects metabolism, oxygen demand, breeding behavior, and stress.',
+      value: params.tempF,
+      min: 60,
+      max: 82,
+      warnMin: 64,
+      idealMin: 68,
+      idealMax: 78,
+      warnMax: 80,
+      decimals: 1,
+      suffix: 'F',
+    },
+    {
+      key: 'nh3',
+      label: 'NH₃',
+      fullName: 'Ammonia',
+      tooltip: 'NH₃ is ammonia, highly toxic to shrimp. It should stay as close to zero as possible.',
+      value: params.ammonia,
+      min: 0,
+      max: 1.2,
+      warnMin: 0,
+      idealMin: 0,
+      idealMax: 0.15,
+      warnMax: 0.35,
+      decimals: 2,
+    },
+    {
+      key: 'no2',
+      label: 'NO₂',
+      fullName: 'Nitrite',
+      tooltip: 'NO₂ is nitrite, a toxic intermediate in the nitrogen cycle. It should be near zero.',
+      value: params.nitrite,
+      min: 0,
+      max: 1.2,
+      warnMin: 0,
+      idealMin: 0,
+      idealMax: 0.15,
+      warnMax: 0.35,
+      decimals: 2,
+    },
+    {
+      key: 'no3',
+      label: 'NO₃',
+      fullName: 'Nitrate',
+      tooltip: 'NO₃ is nitrate, the end product of cycling. Less toxic, but high levels still stress shrimp over time.',
+      value: params.nitrate,
+      min: 0,
+      max: 60,
+      warnMin: 0,
+      idealMin: 0,
+      idealMax: 20,
+      warnMax: 35,
+      decimals: 1,
+    },
+  ] : [];
 
   return (
     <div className="hud">
@@ -169,14 +335,25 @@ export function HUD() {
       {params && (
         <>
         <div className="water-params-strip">
-          <ParamBadge label="pH" value={params.ph.toFixed(1)} warn={params.ph < 6.5 || params.ph > 7.8} />
-          <ParamBadge label="GH" value={`${params.gh.toFixed(1)}°`} warn={params.gh < 4} />
-          <ParamBadge label="KH" value={`${params.kh.toFixed(1)}°`} warn={params.kh < 2} />
-          <ParamBadge label="TDS" value={`${Math.round(params.tds)}ppm`} warn={params.tds > 300} />
-          <ParamBadge label="Temp" value={`${params.tempF.toFixed(1)}°F`} warn={params.tempF > 78 || params.tempF < 64} />
-          <ParamBadge label="NH₃" value={`${params.ammonia.toFixed(2)}`} warn={params.ammonia > 0.25} danger={params.ammonia > 0.5} />
-          <ParamBadge label="NO₂" value={`${params.nitrite.toFixed(2)}`} warn={params.nitrite > 0.25} danger={params.nitrite > 0.5} />
-          <ParamBadge label="NO₃" value={`${params.nitrate.toFixed(1)}`} warn={params.nitrate > 20} danger={params.nitrate > 40} />
+          <div className="param-meter-grid">
+            {paramMeters.map((cfg) => {
+              const pct = ((clamp(cfg.value, cfg.min, cfg.max) - cfg.min) / (cfg.max - cfg.min)) * 100;
+              const status = getMeterStatus(cfg.value, cfg);
+              return (
+                <div key={cfg.key} className="param-meter" title={`${cfg.fullName}: ${cfg.value.toFixed(cfg.decimals ?? 1)}${cfg.suffix ?? ''}`}>
+                  <div className="param-meter-label-row">
+                    <div className="param-meter-label" title={cfg.tooltip}>{cfg.label}</div>
+                    <span className="param-meter-help" title={cfg.tooltip} aria-label={`${cfg.fullName} info`}>i</span>
+                  </div>
+                  <div className="param-meter-track" style={{ backgroundImage: getRangeGradient(cfg) }}>
+                    <div className={`param-meter-fill meter-${status}`} style={{ height: `${pct}%` }} />
+                    <div className={`param-meter-indicator meter-${status}`} style={{ bottom: `${pct}%` }} />
+                  </div>
+                  <div className="param-meter-value">{cfg.value.toFixed(cfg.decimals ?? 1)}{cfg.suffix ?? ''}</div>
+                </div>
+              );
+            })}
+          </div>
           <div
             className={`cycle-meter cycle-stage-${cycleInfo.stageKey}`}
             aria-label={`Cycle progress ${cycleProgressPct}%`}
@@ -259,19 +436,6 @@ export function HUD() {
           </div>
         ))}
       </div>
-    </div>
-  );
-}
-
-function ParamBadge({
-  label, value, warn = false, danger = false,
-}: {
-  label: string; value: string; warn?: boolean; danger?: boolean;
-}) {
-  return (
-    <div className={`param-badge ${danger ? 'param-danger' : warn ? 'param-warn' : ''}`}>
-      <span className="param-label">{label}</span>
-      <span className="param-value">{value}</span>
     </div>
   );
 }
