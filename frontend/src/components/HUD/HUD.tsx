@@ -340,10 +340,20 @@ export function HUD() {
               const pct = ((clamp(cfg.value, cfg.min, cfg.max) - cfg.min) / (cfg.max - cfg.min)) * 100;
               const status = getMeterStatus(cfg.value, cfg);
               return (
-                <div key={cfg.key} className="param-meter" title={`${cfg.fullName}: ${cfg.value.toFixed(cfg.decimals ?? 1)}${cfg.suffix ?? ''}`}>
+                <div
+                  key={cfg.key}
+                  className="param-meter ui-tooltip"
+                  data-tooltip={`${cfg.fullName}: ${cfg.value.toFixed(cfg.decimals ?? 1)}${cfg.suffix ?? ''}`}
+                >
                   <div className="param-meter-label-row">
-                    <div className="param-meter-label" title={cfg.tooltip}>{cfg.label}</div>
-                    <span className="param-meter-help" title={cfg.tooltip} aria-label={`${cfg.fullName} info`}>i</span>
+                    <div className="param-meter-label">{cfg.label}</div>
+                    <span
+                      className="param-meter-help ui-tooltip"
+                      data-tooltip={cfg.tooltip}
+                      aria-label={`${cfg.fullName} info`}
+                    >
+                      i
+                    </span>
                   </div>
                   <div className="param-meter-track" style={{ backgroundImage: getRangeGradient(cfg) }}>
                     <div className={`param-meter-fill meter-${status}`} style={{ height: `${pct}%` }} />
@@ -355,15 +365,15 @@ export function HUD() {
             })}
           </div>
           <div
-            className={`cycle-meter cycle-stage-${cycleInfo.stageKey}`}
+            className={`cycle-meter cycle-stage-${cycleInfo.stageKey} ui-tooltip`}
             aria-label={`Cycle progress ${cycleProgressPct}%`}
-            title={cycleInfo.hint}
+            data-tooltip={cycleInfo.hint}
           >
             <div className="cycle-meter-top">
               <div className="cycle-badge" style={{ color: tankSnapshot?.cyclePhase.colorHex }}>
                 {tankSnapshot?.cyclePhase.label}
               </div>
-              <span className="cycle-help" title={cycleInfo.hint} aria-label="Cycle phase help">i</span>
+              <span className="cycle-help ui-tooltip" data-tooltip={cycleInfo.hint} aria-label="Cycle phase help">i</span>
               <div className="cycle-percent">{cycleProgressPct}%</div>
             </div>
             <div className="cycle-progress-track">
@@ -374,7 +384,7 @@ export function HUD() {
             </div>
           </div>
         </div>
-        <div className="bacteria-meter" title={bacteriaTier.hint} aria-label={`Beneficial bacteria ${bacteriaPct}%`}>
+        <div className="bacteria-meter ui-tooltip" data-tooltip={bacteriaTier.hint} aria-label={`Beneficial bacteria ${bacteriaPct}%`}>
           <div className="bacteria-meter-top">
             <div className="bacteria-title">Beneficial Bacteria</div>
             <div className="bacteria-percent">{bacteriaPct}%</div>

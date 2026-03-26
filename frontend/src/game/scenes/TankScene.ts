@@ -10,6 +10,7 @@ import { TANK_CANVAS, SPRITE_SIZE, TICKS_PER_GAME_MINUTE } from '../data/gameCon
 import { GAME_EVENTS } from '../ShrimpGame';
 import { VARIANT_MAP } from '../data/shrimpVariants';
 import { STORE_ITEMS } from '../data/storeItems';
+import type { ShrimpBehavior, ShrimpState } from '../types';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // TankScene — the main Phaser simulation
@@ -19,6 +20,7 @@ const TICKS_PER_GAME_HOUR = TICKS_PER_GAME_MINUTE * 60;
 const TICKS_PER_GAME_DAY = TICKS_PER_GAME_HOUR * 24;
 const STORE_ITEM_NAME_BY_ID = new Map(STORE_ITEMS.map(i => [i.id, i.name]));
 const PLANT_RENDER_SCALE_MULTIPLIER = 1.4;
+const TOOLTIP_PAD = 8;
 
 export class TankScene extends Phaser.Scene {
   private tank!: TankState;
@@ -42,6 +44,9 @@ export class TankScene extends Phaser.Scene {
   private tankH = 0;
   private plantTooltipText?: Phaser.GameObjects.Text;
   private plantTooltipBg?: Phaser.GameObjects.Rectangle;
+  private shrimpTooltipText?: Phaser.GameObjects.Text;
+  private shrimpTooltipBg?: Phaser.GameObjects.Rectangle;
+  private pinnedTooltipTarget: { kind: 'shrimp' | 'plant'; id: string } | null = null;
 
   constructor() {
     super({ key: 'TankScene' });
@@ -64,6 +69,11 @@ export class TankScene extends Phaser.Scene {
     this.game.events.on(GAME_EVENTS.ADD_ADDITIVE, this.handleAddAdditive, this);
     this.game.events.on(GAME_EVENTS.SET_SPEED, this.setSpeed, this);
     this.game.events.on(GAME_EVENTS.ADD_SHRIMP, this.handleAddShrimp, this);
+
+    // Tooltip pinning lifecycle
+    this.input.on('pointermove', this.handlePointerMove, this);
+    this.input.on('pointerdown', this.handlePointerDown, this);
+    this.input.on('gameout', this.clearPinnedTooltip, this);
   }
 
   /**
@@ -83,6 +93,7 @@ export class TankScene extends Phaser.Scene {
     this.plantSprites.clear();
     this.foodSprites.clear();
     this.foodParticles = [];
+    this.clearPinnedTooltip();
 
     // Resize the Phaser canvas
     this.scale.resize(this.tankW, this.tankH);
@@ -123,49 +134,278 @@ export class TankScene extends Phaser.Scene {
 
   private addShrimpSprite(state: import('../types').ShrimpState) {
     const sprite = new ShrimpSprite(this, state, this.tankW, this.tankH, this.substrateY);
+    sprite.setData('tooltipKind', 'shrimp');
+    sprite.setData('tooltipId', state.id);
+    sprite.setInteractive({ useHandCursor: true, pixelPerfect: true });
+    sprite.on('pointerover', (pointer: Phaser.Input.Pointer) => {
+      if (this.pinnedTooltipTarget) return;
+      this.showShrimpTooltip(sprite.shrimpState, pointer.worldX, pointer.worldY);
+    });
+    sprite.on('pointermove', (pointer: Phaser.Input.Pointer) => {
+      if (this.pinnedTooltipTarget) return;
+      this.showShrimpTooltip(sprite.shrimpState, pointer.worldX, pointer.worldY);
+    });
+    sprite.on('pointerout', () => {
+      if (this.pinnedTooltipTarget) return;
+      this.hideShrimpTooltip();
+    });
+    sprite.on('pointerdown', () => {
+      this.pinTooltipToShrimp(sprite.shrimpState.id);
+    });
     this.shrimpSprites.set(state.id, sprite);
+  }
+
+  private pinTooltipToShrimp(id: string) {
+    this.pinnedTooltipTarget = { kind: 'shrimp', id };
+    this.hidePlantTooltip();
+    this.refreshPinnedTooltip();
+  }
+
+  private pinTooltipToPlant(id: string) {
+    this.pinnedTooltipTarget = { kind: 'plant', id };
+    this.hideShrimpTooltip();
+    this.refreshPinnedTooltip();
+  }
+
+  private clearPinnedTooltip() {
+    this.pinnedTooltipTarget = null;
+    this.hideShrimpTooltip();
+    this.hidePlantTooltip();
+  }
+
+  private handlePointerMove(pointer: Phaser.Input.Pointer) {
+    if (!this.pinnedTooltipTarget) return;
+    const insideX = pointer.x >= 0 && pointer.x <= this.tankW;
+    const insideY = pointer.y >= 0 && pointer.y <= this.tankH;
+    if (!insideX || !insideY) {
+      this.clearPinnedTooltip();
+    }
+  }
+
+  private handlePointerDown(pointer: Phaser.Input.Pointer, currentlyOver: Phaser.GameObjects.GameObject[] = []) {
+    if (!this.pinnedTooltipTarget) return;
+
+    const hitPinnedTarget = currentlyOver.some(obj => {
+      const kind = obj.getData('tooltipKind');
+      const id = obj.getData('tooltipId');
+      return kind === this.pinnedTooltipTarget?.kind && id === this.pinnedTooltipTarget?.id;
+    });
+
+    if (!hitPinnedTarget) {
+      this.clearPinnedTooltip();
+    }
+  }
+
+  private refreshPinnedTooltip() {
+    if (!this.pinnedTooltipTarget) return;
+
+    if (this.pinnedTooltipTarget.kind === 'shrimp') {
+      const sprite = this.shrimpSprites.get(this.pinnedTooltipTarget.id);
+      if (!sprite) {
+        this.clearPinnedTooltip();
+        return;
+      }
+      this.showShrimpTooltip(sprite.shrimpState, sprite.x, sprite.y - 8);
+      return;
+    }
+
+    const sprite = this.plantSprites.get(this.pinnedTooltipTarget.id);
+    const state = this.tank.plants?.find(p => p.id === this.pinnedTooltipTarget?.id);
+    if (!sprite || !state) {
+      this.clearPinnedTooltip();
+      return;
+    }
+
+    this.showPlantTooltip(this.getPlantName(state.itemId, state.type), state.type, sprite.x, sprite.y - 10);
+  }
+
+  private getBehaviorLabel(behavior: ShrimpBehavior): string {
+    switch (behavior) {
+      case 'seek_food':
+        return 'Foraging';
+      case 'eat':
+        return 'Grazing';
+      case 'breeding_swim':
+        return 'Looking for mate';
+      case 'post_molt':
+        return 'Recovering after molt';
+      case 'hide':
+        return 'Hiding';
+      case 'wander':
+        return 'Exploring';
+      case 'idle':
+      default:
+        return 'Resting';
+    }
+  }
+
+  private getBehaviorDetail(behavior: ShrimpBehavior): string {
+    switch (behavior) {
+      case 'seek_food':
+        return 'Searching substrate and surfaces for edible bits.';
+      case 'eat':
+        return 'Actively feeding on biofilm or food particles.';
+      case 'breeding_swim':
+        return 'Pheromone response swim after a molt event.';
+      case 'post_molt':
+        return 'Soft shell phase. More vulnerable to stress.';
+      case 'hide':
+        return 'Taking shelter to reduce stress.';
+      case 'wander':
+        return 'Cruising the tank and scouting habitat.';
+      case 'idle':
+      default:
+        return 'Low activity period between tasks.';
+    }
+  }
+
+  private getStageLabel(stage: ShrimpState['stage']): string {
+    switch (stage) {
+      case 'shrimplet':
+        return 'Shrimplet';
+      case 'juvenile':
+        return 'Juvenile';
+      case 'adult':
+      default:
+        return 'Adult';
+    }
+  }
+
+  private formatAgeDays(ageGameDays: number): string {
+    if (ageGameDays < 10) return `${ageGameDays.toFixed(1)} d`;
+    return `${Math.round(ageGameDays)} d`;
+  }
+
+  private getPlantTypeLabel(type: string): string {
+    switch (type) {
+      case 'java_moss':
+        return 'Moss';
+      case 'anubias':
+        return 'Rhizome plant';
+      default:
+        return 'Aquatic plant';
+    }
+  }
+
+  private getPlantBenefit(type: string): string {
+    switch (type) {
+      case 'java_moss':
+        return 'Boosts biofilm and gives shrimplets dense cover.';
+      case 'anubias':
+        return 'Adds stable cover and gentle nitrate uptake.';
+      default:
+        return 'Adds cover, surfaces, and water quality support.';
+    }
+  }
+
+  private getPlantName(itemId: string, type: string): string {
+    const fromStore = STORE_ITEM_NAME_BY_ID.get(itemId);
+    if (fromStore) return fromStore;
+    if (type === 'java_moss') return 'Java Moss';
+    if (type === 'anubias') return 'Anubias';
+    return 'Aquarium Plant';
+  }
+
+  private ensureShrimpTooltip() {
+    if (!this.shrimpTooltipBg || !this.shrimpTooltipText) {
+      this.shrimpTooltipBg = this.add.rectangle(0, 0, 10, 10, 0x020910, 0.96)
+        .setOrigin(0, 0)
+        .setDepth(1000)
+        .setVisible(false);
+      this.shrimpTooltipText = this.add.text(0, 0, '', {
+        fontFamily: 'Segoe UI',
+        fontSize: '13px',
+        color: '#eef7ff',
+        stroke: '#02101b',
+        strokeThickness: 2,
+        shadow: { offsetX: 0, offsetY: 1, color: '#000000', blur: 2, fill: true },
+        wordWrap: { width: 260, useAdvancedWrap: true },
+      })
+        .setLineSpacing(2)
+        .setDepth(1001)
+        .setVisible(false);
+    }
+  }
+
+  private showShrimpTooltip(shrimp: ShrimpState, x: number, y: number) {
+    this.ensureShrimpTooltip();
+    if (!this.shrimpTooltipBg || !this.shrimpTooltipText) return;
+
+    const variantName = VARIANT_MAP.get(shrimp.variantId)?.name ?? 'Unknown Shrimp';
+    const identity = shrimp.name?.trim()?.length
+      ? `${variantName} (${shrimp.name.trim()})`
+      : variantName;
+    const sexLabel = shrimp.sex === 'female' ? 'Female' : 'Male';
+    const stageLabel = this.getStageLabel(shrimp.stage);
+    const task = this.getBehaviorLabel(shrimp.behavior);
+    const taskDetail = this.getBehaviorDetail(shrimp.behavior);
+    const healthPct = Math.round(Math.max(0, Math.min(1, shrimp.health)) * 100);
+    const fullnessPct = Math.round(Math.max(0, Math.min(1, shrimp.fullness)) * 100);
+    const lines = [
+      identity,
+      `${sexLabel} ${stageLabel}  Age: ${this.formatAgeDays(shrimp.ageGameDays)}`,
+      `Health: ${healthPct}%  Fullness: ${fullnessPct}%`,
+      `Task: ${task}`,
+      taskDetail,
+    ];
+
+    if (shrimp.berriedDaysRemaining !== null && shrimp.sex === 'female') {
+      lines.push(`Berried: ${Math.max(0, Math.ceil(shrimp.berriedDaysRemaining))} d to hatch`);
+    }
+
+    this.shrimpTooltipText.setText(lines.join('\n'));
+    const w = this.shrimpTooltipText.width + TOOLTIP_PAD * 2;
+    const h = this.shrimpTooltipText.height + TOOLTIP_PAD * 2;
+    const tx = Phaser.Math.Clamp(x + 10, 4, this.tankW - w - 4);
+    const ty = Phaser.Math.Clamp(y - h - 8, 4, this.tankH - h - 4);
+    this.shrimpTooltipBg.setPosition(tx, ty).setSize(w, h).setVisible(true);
+    this.shrimpTooltipText.setPosition(tx + TOOLTIP_PAD, ty + TOOLTIP_PAD).setVisible(true);
+  }
+
+  private hideShrimpTooltip() {
+    this.shrimpTooltipBg?.setVisible(false);
+    this.shrimpTooltipText?.setVisible(false);
+  }
+
+  private showPlantTooltip(name: string, type: string, x: number, y: number) {
+    if (!this.plantTooltipText || !this.plantTooltipBg) return;
+    this.plantTooltipText.setText([
+      name,
+      `Type: ${this.getPlantTypeLabel(type)}`,
+      this.getPlantBenefit(type),
+    ].join('\n'));
+    const w = this.plantTooltipText.width + TOOLTIP_PAD * 2;
+    const h = this.plantTooltipText.height + TOOLTIP_PAD * 2;
+    const tx = Phaser.Math.Clamp(x + 10, 4, this.tankW - w - 4);
+    const ty = Phaser.Math.Clamp(y - h - 8, 4, this.tankH - h - 4);
+    this.plantTooltipBg.setPosition(tx, ty).setSize(w, h).setVisible(true);
+    this.plantTooltipText.setPosition(tx + TOOLTIP_PAD, ty + TOOLTIP_PAD).setVisible(true);
+  }
+
+  private hidePlantTooltip() {
+    this.plantTooltipBg?.setVisible(false);
+    this.plantTooltipText?.setVisible(false);
   }
 
   private renderPlants() {
     const plants = this.tank.plants ?? [];
 
     // Hover tooltip overlay
-    this.plantTooltipBg = this.add.rectangle(0, 0, 10, 10, 0x041324, 0.88)
+    this.plantTooltipBg = this.add.rectangle(0, 0, 10, 10, 0x020910, 0.96)
       .setOrigin(0, 0)
       .setDepth(1000)
       .setVisible(false);
     this.plantTooltipText = this.add.text(0, 0, '', {
       fontFamily: 'Segoe UI',
-      fontSize: '12px',
-      color: '#dce8f5',
+      fontSize: '13px',
+      color: '#eef7ff',
+      stroke: '#02101b',
+      strokeThickness: 2,
+      shadow: { offsetX: 0, offsetY: 1, color: '#000000', blur: 1, fill: true },
     })
+      .setLineSpacing(1)
       .setDepth(1001)
       .setVisible(false);
-
-    const plantName = (itemId: string, type: string): string => {
-      const fromStore = STORE_ITEM_NAME_BY_ID.get(itemId);
-      if (fromStore) return fromStore;
-      if (type === 'java_moss') return 'Java Moss';
-      if (type === 'anubias') return 'Anubias';
-      return 'Aquarium Plant';
-    };
-
-    const showPlantTooltip = (name: string, x: number, y: number) => {
-      if (!this.plantTooltipText || !this.plantTooltipBg) return;
-      this.plantTooltipText.setText(name);
-      const pad = 6;
-      const w = this.plantTooltipText.width + pad * 2;
-      const h = this.plantTooltipText.height + pad * 2;
-      const tx = Phaser.Math.Clamp(x + 10, 4, this.tankW - w - 4);
-      const ty = Phaser.Math.Clamp(y - h - 8, 4, this.tankH - h - 4);
-      this.plantTooltipBg.setPosition(tx, ty).setSize(w, h).setVisible(true);
-      this.plantTooltipText.setPosition(tx + pad, ty + pad).setVisible(true);
-    };
-
-    const hidePlantTooltip = () => {
-      this.plantTooltipBg?.setVisible(false);
-      this.plantTooltipText?.setVisible(false);
-    };
 
     plants.forEach(p => {
       const key = p.type === 'java_moss'
@@ -175,24 +415,34 @@ export class TankScene extends Phaser.Scene {
           : 'plant_java_moss';
 
       const sprite = this.add.image(p.x, p.y, key).setOrigin(0.5, 1);
+      sprite.setData('tooltipKind', 'plant');
+      sprite.setData('tooltipId', p.id);
       sprite.setScale(p.scale * PLANT_RENDER_SCALE_MULTIPLIER);
       sprite.setAlpha(0.95);
       sprite.setInteractive({ useHandCursor: true, pixelPerfect: true });
 
-      const name = plantName(p.itemId, p.type);
+      const name = this.getPlantName(p.itemId, p.type);
       sprite.on('pointerover', (pointer: Phaser.Input.Pointer) => {
-        showPlantTooltip(name, pointer.worldX, pointer.worldY);
+        if (this.pinnedTooltipTarget) return;
+        this.showPlantTooltip(name, p.type, pointer.worldX, pointer.worldY);
       });
       sprite.on('pointermove', (pointer: Phaser.Input.Pointer) => {
-        showPlantTooltip(name, pointer.worldX, pointer.worldY);
+        if (this.pinnedTooltipTarget) return;
+        this.showPlantTooltip(name, p.type, pointer.worldX, pointer.worldY);
       });
-      sprite.on('pointerout', hidePlantTooltip);
+      sprite.on('pointerout', () => {
+        if (this.pinnedTooltipTarget) return;
+        this.hidePlantTooltip();
+      });
+      sprite.on('pointerdown', () => {
+        this.pinTooltipToPlant(p.id);
+      });
 
       this.plantSprites.set(p.id, sprite);
     });
 
     if (plants.length === 0) {
-      hidePlantTooltip();
+      this.hidePlantTooltip();
     }
   }
 
@@ -225,6 +475,10 @@ export class TankScene extends Phaser.Scene {
     this.shrimpSprites.forEach(sprite => {
       sprite.update(delta * this.speed, this.foodParticles);
     });
+
+    if (this.pinnedTooltipTarget) {
+      this.refreshPinnedTooltip();
+    }
 
     // ── Game simulation ticks ─────────────────────────────────────────────────
     const tickDuration = 200; // ms per logical tick
@@ -281,6 +535,9 @@ export class TankScene extends Phaser.Scene {
     // Destroy sprites for dead/removed shrimp
     this.shrimpSprites.forEach((sprite, id) => {
       if (!this.tank.shrimp.find(s => s.id === id)) {
+        if (this.pinnedTooltipTarget?.kind === 'shrimp' && this.pinnedTooltipTarget.id === id) {
+          this.clearPinnedTooltip();
+        }
         sprite.destroy();
         this.shrimpSprites.delete(id);
       }

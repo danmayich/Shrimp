@@ -42,6 +42,9 @@
 
     /* Typography */
     --font: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    --tooltip-bg: rgba(3, 10, 20, 0.97);
+    --tooltip-border: rgba(117, 193, 255, 0.45);
+    --tooltip-text: #eef7ff;
 
     /* Transitions */
     --t: 150ms ease;
@@ -67,6 +70,61 @@
   p { margin: 0; }
   button { cursor: pointer; font-family: var(--font); }
   input, select, textarea { font-family: var(--font); }
+
+  /* ── Shared UI Tooltip ────────────────────────────────────── */
+  .ui-tooltip {
+    position: relative;
+  }
+
+  .ui-tooltip::before,
+  .ui-tooltip::after {
+    position: absolute;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 120ms ease, transform 120ms ease;
+    z-index: 1200;
+  }
+
+  .ui-tooltip::after {
+    content: attr(data-tooltip);
+    bottom: calc(100% + 10px);
+    left: 50%;
+    transform: translate(-50%, 4px);
+    min-width: 160px;
+    max-width: min(300px, 80vw);
+    padding: 8px 10px;
+    border-radius: 8px;
+    border: 1px solid var(--tooltip-border);
+    background: var(--tooltip-bg);
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(4, 16, 31, 0.65) inset;
+    color: var(--tooltip-text);
+    font-size: 12.5px;
+    font-weight: 600;
+    line-height: 1.4;
+    white-space: normal;
+    text-align: left;
+    letter-spacing: 0.1px;
+  }
+
+  .ui-tooltip::before {
+    content: '';
+    bottom: calc(100% + 4px);
+    left: 50%;
+    transform: translate(-50%, 4px) rotate(-45deg);
+    width: 8px;
+    height: 8px;
+    border-left: 1px solid var(--tooltip-border);
+    border-bottom: 1px solid var(--tooltip-border);
+    background: var(--tooltip-bg);
+  }
+
+  .ui-tooltip:hover::before,
+  .ui-tooltip:hover::after,
+  .ui-tooltip:focus-visible::before,
+  .ui-tooltip:focus-visible::after {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
 
   /* ── App Root ──────────────────────────────────────────────── */
   .app-root {
@@ -368,6 +426,7 @@
     background: rgba(7, 24, 40, 0.65);
     cursor: help;
     flex-shrink: 0;
+    position: relative;
   }
   .param-meter-track {
     position: relative;
@@ -435,6 +494,11 @@
     .param-meter-grid {
       width: 100%;
       justify-content: space-between;
+    }
+
+    .ui-tooltip::after {
+      max-width: min(240px, 88vw);
+      font-size: 12px;
     }
   }
 
@@ -523,6 +587,7 @@
     background: rgba(7, 24, 40, 0.6);
     cursor: help;
     flex-shrink: 0;
+    position: relative;
   }
   .cycle-percent {
     font-size: 11px;
