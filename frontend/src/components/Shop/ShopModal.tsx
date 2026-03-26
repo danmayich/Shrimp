@@ -65,6 +65,7 @@ export function ShopModal() {
           getGame()?.events.emit(GAME_EVENTS.SET_TANK, updatedTank);
         }
         notify(`Added ${item.name}. Plant cover increased (+${cover}).`, 'success');
+        closeModal();
       }
       setConfirmItem(null);
       return;
@@ -73,6 +74,7 @@ export function ShopModal() {
     if (deductCash(item.price)) {
       addInventoryItem(item.id);
       notify(`Purchased ${item.name}`, 'success');
+      closeModal();
     }
     setConfirmItem(null);
   }
@@ -93,6 +95,7 @@ export function ShopModal() {
     if (deductCash(total)) {
       for (let i = 0; i < shrimpQty; i++) addShrimpToActiveTank(shrimpVariantId);
       notify(`Added ${shrimpQty}× ${variant.name} to your tank`, 'success');
+      closeModal();
     }
   }
 
