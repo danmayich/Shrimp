@@ -1,6 +1,7 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { createShrimpGame, destroyShrimpGame, GAME_EVENTS } from '../game/ShrimpGame';
 import type { TankStateSnapshot } from '../game/ShrimpGame';
+import type { TankTooltipData } from '../game/ShrimpGame';
 import type { BreedingEvent } from '../game/systems/BreedingSystem';
 import { useGameStore } from '../store/gameStore';
 import { useUIStore } from '../store/uiStore';
@@ -13,6 +14,7 @@ export function GameCanvas() {
   const setWaterWarnings = useGameStore(s => s.setWaterWarnings);
   const addBreedingNotification = useGameStore(s => s.addBreedingNotification);
   const pushNotification = useUIStore(s => s.pushNotification);
+  const [tooltip, setTooltip] = useState<TankTooltipData | null>(null);
   const profile = useGameStore(s => s.profile);
   const speed = profile?.gameSpeedMultiplier ?? 1;
 
@@ -47,8 +49,12 @@ export function GameCanvas() {
         pushNotification(`💀 A shrimp died: ${evt.cause}`, 'warning');
       }
     });
+    game.events.on(GAME_EVENTS.TANK_TOOLTIP, (data: TankTooltipData | null) => {
+      setTooltip(data);
+    });
 
     return () => {
+      setTooltip(null);
       destroyShrimpGame();
       gameRef.current = null;
     };
@@ -85,19 +91,42 @@ export function GameCanvas() {
     gameRef.current?.events.emit(GAME_EVENTS.SET_SPEED, speed);
   }, [speed]);
 
+  const leftPct = tooltip ? Math.max(2, Math.min(98, (tooltip.x / tooltip.tankW) * 100)) : 0;
+  const topPct = tooltip ? Math.max(4, Math.min(96, (tooltip.y / tooltip.tankH) * 100)) : 0;
+  const alignRight = leftPct > 70;
+  const alignBottom = topPct < 24;
+
   return (
-    <div
-      ref={containerRef}
-      style={{
-        width: '100%',
-        maxWidth: 960,
-        aspectRatio: '8/3.5',
-        borderRadius: 8,
-        overflow: 'hidden',
-        border: '2px solid rgba(74, 173, 255, 0.3)',
-        boxShadow: '0 0 30px rgba(74, 173, 255, 0.15)',
-        background: '#0d2a42',
-      }}
-    />
+    <div className="tank-canvas-shell">
+      <div ref={containerRef} className="tank-canvas-stage" />
+
+      {tooltip && (
+        <div
+          className={`tank-tooltip-card ${tooltip.kind} ${tooltip.pinned ? 'pinned' : ''} ${alignRight ? 'align-right' : 'align-left'} ${alignBottom ? 'align-bottom' : 'align-top'}`}
+          style={{ left: `${leftPct}%`, top: `${topPct}%` }}
+        >
+          <div className="tank-tooltip-header-row">
+            <div className="tank-tooltip-kind">{tooltip.kind === 'shrimp' ? 'Shrimp' : 'Plant'}</div>
+            {tooltip.pinned && <div className="tank-tooltip-pin">Pinned</div>}
+          </div>
+          <div className="tank-tooltip-title">{tooltip.title}</div>
+          {tooltip.subtitle && <div className="tank-tooltip-subtitle">{tooltip.subtitle}</div>}
+
+          {tooltip.stats && tooltip.stats.length > 0 && (
+            <div className="tank-tooltip-stats">
+              {tooltip.stats.map((stat) => (
+                <div key={`${stat.label}:${stat.value}`} className={`tank-tooltip-stat tone-${stat.tone ?? 'info'}`}>
+                  <span>{stat.label}</span>
+                  <strong>{stat.value}</strong>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {tooltip.detail && <div className="tank-tooltip-detail">{tooltip.detail}</div>}
+          {tooltip.detail2 && <div className="tank-tooltip-detail">{tooltip.detail2}</div>}
+        </div>
+      )}
+    </div>
   );
 }

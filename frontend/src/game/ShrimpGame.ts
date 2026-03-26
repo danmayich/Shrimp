@@ -18,12 +18,14 @@ export const GAME_EVENTS = {
   TANK_STATE_UPDATE: 'out:tank_state',
   WATER_WARNINGS:    'out:water_warnings',
   BREEDING_EVENT:    'out:breeding_event',
+  TANK_TOOLTIP:      'out:tank_tooltip',
 } as const;
 
 export type GameEventMap = {
   [GAME_EVENTS.TANK_STATE_UPDATE]: TankStateSnapshot;
   [GAME_EVENTS.WATER_WARNINGS]: string[];
   [GAME_EVENTS.BREEDING_EVENT]: BreedingEvent;
+  [GAME_EVENTS.TANK_TOOLTIP]: TankTooltipData | null;
   [GAME_EVENTS.SET_SPEED]: SpeedMultiplier;
 };
 
@@ -36,6 +38,20 @@ export interface TankStateSnapshot {
   uneatenfood: number;
   gameAge: number;
   cyclePhase: { label: string; colorHex: string };
+}
+
+export interface TankTooltipData {
+  kind: 'shrimp' | 'plant';
+  pinned: boolean;
+  x: number;
+  y: number;
+  tankW: number;
+  tankH: number;
+  title: string;
+  subtitle?: string;
+  stats?: Array<{ label: string; value: string; tone?: 'good' | 'warn' | 'danger' | 'info' }>;
+  detail?: string;
+  detail2?: string;
 }
 
 let gameInstance: Phaser.Game | null = null;

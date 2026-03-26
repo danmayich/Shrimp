@@ -8,6 +8,7 @@ import { ShrimpSprite } from '../sprites/ShrimpSprite';
 import type { SpeedMultiplier } from '../data/gameConfig';
 import { TANK_CANVAS, SPRITE_SIZE, TICKS_PER_GAME_MINUTE } from '../data/gameConfig';
 import { GAME_EVENTS } from '../ShrimpGame';
+import type { TankTooltipData } from '../ShrimpGame';
 import { VARIANT_MAP } from '../data/shrimpVariants';
 import { STORE_ITEMS } from '../data/storeItems';
 import type { ShrimpBehavior, ShrimpState } from '../types';
@@ -20,7 +21,6 @@ const TICKS_PER_GAME_HOUR = TICKS_PER_GAME_MINUTE * 60;
 const TICKS_PER_GAME_DAY = TICKS_PER_GAME_HOUR * 24;
 const STORE_ITEM_NAME_BY_ID = new Map(STORE_ITEMS.map(i => [i.id, i.name]));
 const PLANT_RENDER_SCALE_MULTIPLIER = 1.4;
-const TOOLTIP_PAD = 8;
 
 export class TankScene extends Phaser.Scene {
   private tank!: TankState;
@@ -42,10 +42,6 @@ export class TankScene extends Phaser.Scene {
   private substrateY = 0;
   private tankW = 0;
   private tankH = 0;
-  private plantTooltipText?: Phaser.GameObjects.Text;
-  private plantTooltipBg?: Phaser.GameObjects.Rectangle;
-  private shrimpTooltipText?: Phaser.GameObjects.Text;
-  private shrimpTooltipBg?: Phaser.GameObjects.Rectangle;
   private pinnedTooltipTarget: { kind: 'shrimp' | 'plant'; id: string } | null = null;
 
   constructor() {
@@ -137,18 +133,6 @@ export class TankScene extends Phaser.Scene {
     sprite.setData('tooltipKind', 'shrimp');
     sprite.setData('tooltipId', state.id);
     sprite.setInteractive({ useHandCursor: true, pixelPerfect: true });
-    sprite.on('pointerover', (pointer: Phaser.Input.Pointer) => {
-      if (this.pinnedTooltipTarget) return;
-      this.showShrimpTooltip(sprite.shrimpState, pointer.worldX, pointer.worldY);
-    });
-    sprite.on('pointermove', (pointer: Phaser.Input.Pointer) => {
-      if (this.pinnedTooltipTarget) return;
-      this.showShrimpTooltip(sprite.shrimpState, pointer.worldX, pointer.worldY);
-    });
-    sprite.on('pointerout', () => {
-      if (this.pinnedTooltipTarget) return;
-      this.hideShrimpTooltip();
-    });
     sprite.on('pointerdown', () => {
       this.pinTooltipToShrimp(sprite.shrimpState.id);
     });
@@ -171,6 +155,10 @@ export class TankScene extends Phaser.Scene {
     this.pinnedTooltipTarget = null;
     this.hideShrimpTooltip();
     this.hidePlantTooltip();
+  }
+
+  private emitTooltip(data: TankTooltipData | null) {
+    this.game.events.emit(GAME_EVENTS.TANK_TOOLTIP, data);
   }
 
   private handlePointerMove(pointer: Phaser.Input.Pointer) {
@@ -205,7 +193,7 @@ export class TankScene extends Phaser.Scene {
         this.clearPinnedTooltip();
         return;
       }
-      this.showShrimpTooltip(sprite.shrimpState, sprite.x, sprite.y - 8);
+      this.showShrimpTooltip(sprite.shrimpState, sprite.x, sprite.y - 8, true);
       return;
     }
 
@@ -216,7 +204,7 @@ export class TankScene extends Phaser.Scene {
       return;
     }
 
-    this.showPlantTooltip(this.getPlantName(state.itemId, state.type), state.type, sprite.x, sprite.y - 10);
+    this.showPlantTooltip(this.getPlantName(state.itemId, state.type), state.type, sprite.x, sprite.y - 10, true);
   }
 
   private getBehaviorLabel(behavior: ShrimpBehavior): string {
@@ -306,31 +294,7 @@ export class TankScene extends Phaser.Scene {
     return 'Aquarium Plant';
   }
 
-  private ensureShrimpTooltip() {
-    if (!this.shrimpTooltipBg || !this.shrimpTooltipText) {
-      this.shrimpTooltipBg = this.add.rectangle(0, 0, 10, 10, 0x020910, 0.96)
-        .setOrigin(0, 0)
-        .setDepth(1000)
-        .setVisible(false);
-      this.shrimpTooltipText = this.add.text(0, 0, '', {
-        fontFamily: 'Segoe UI',
-        fontSize: '13px',
-        color: '#eef7ff',
-        stroke: '#02101b',
-        strokeThickness: 2,
-        shadow: { offsetX: 0, offsetY: 1, color: '#000000', blur: 2, fill: true },
-        wordWrap: { width: 260, useAdvancedWrap: true },
-      })
-        .setLineSpacing(2)
-        .setDepth(1001)
-        .setVisible(false);
-    }
-  }
-
-  private showShrimpTooltip(shrimp: ShrimpState, x: number, y: number) {
-    this.ensureShrimpTooltip();
-    if (!this.shrimpTooltipBg || !this.shrimpTooltipText) return;
-
+  private showShrimpTooltip(shrimp: ShrimpState, x: number, y: number, pinned = false) {
     const variantName = VARIANT_MAP.get(shrimp.variantId)?.name ?? 'Unknown Shrimp';
     const identity = shrimp.name?.trim()?.length
       ? `${variantName} (${shrimp.name.trim()})`
@@ -341,71 +305,56 @@ export class TankScene extends Phaser.Scene {
     const taskDetail = this.getBehaviorDetail(shrimp.behavior);
     const healthPct = Math.round(Math.max(0, Math.min(1, shrimp.health)) * 100);
     const fullnessPct = Math.round(Math.max(0, Math.min(1, shrimp.fullness)) * 100);
-    const lines = [
-      identity,
-      `${sexLabel} ${stageLabel}  Age: ${this.formatAgeDays(shrimp.ageGameDays)}`,
-      `Health: ${healthPct}%  Fullness: ${fullnessPct}%`,
-      `Task: ${task}`,
-      taskDetail,
-    ];
+    const berriedText = shrimp.berriedDaysRemaining !== null && shrimp.sex === 'female'
+      ? `${Math.max(0, Math.ceil(shrimp.berriedDaysRemaining))} d to hatch`
+      : undefined;
 
-    if (shrimp.berriedDaysRemaining !== null && shrimp.sex === 'female') {
-      lines.push(`Berried: ${Math.max(0, Math.ceil(shrimp.berriedDaysRemaining))} d to hatch`);
-    }
-
-    this.shrimpTooltipText.setText(lines.join('\n'));
-    const w = this.shrimpTooltipText.width + TOOLTIP_PAD * 2;
-    const h = this.shrimpTooltipText.height + TOOLTIP_PAD * 2;
-    const tx = Phaser.Math.Clamp(x + 10, 4, this.tankW - w - 4);
-    const ty = Phaser.Math.Clamp(y - h - 8, 4, this.tankH - h - 4);
-    this.shrimpTooltipBg.setPosition(tx, ty).setSize(w, h).setVisible(true);
-    this.shrimpTooltipText.setPosition(tx + TOOLTIP_PAD, ty + TOOLTIP_PAD).setVisible(true);
+    this.emitTooltip({
+      kind: 'shrimp',
+      pinned,
+      x,
+      y,
+      tankW: this.tankW,
+      tankH: this.tankH,
+      title: identity,
+      subtitle: `${sexLabel} ${stageLabel}  Age: ${this.formatAgeDays(shrimp.ageGameDays)}`,
+      stats: [
+        { label: 'Health', value: `${healthPct}%`, tone: healthPct >= 70 ? 'good' : healthPct >= 40 ? 'warn' : 'danger' },
+        { label: 'Fullness', value: `${fullnessPct}%`, tone: fullnessPct >= 60 ? 'good' : fullnessPct >= 30 ? 'warn' : 'danger' },
+        { label: 'Task', value: task, tone: 'info' },
+        ...(berriedText ? [{ label: 'Berried', value: berriedText, tone: 'info' as const }] : []),
+      ],
+      detail: taskDetail,
+    });
   }
 
   private hideShrimpTooltip() {
-    this.shrimpTooltipBg?.setVisible(false);
-    this.shrimpTooltipText?.setVisible(false);
+    this.emitTooltip(null);
   }
 
-  private showPlantTooltip(name: string, type: string, x: number, y: number) {
-    if (!this.plantTooltipText || !this.plantTooltipBg) return;
-    this.plantTooltipText.setText([
-      name,
-      `Type: ${this.getPlantTypeLabel(type)}`,
-      this.getPlantBenefit(type),
-    ].join('\n'));
-    const w = this.plantTooltipText.width + TOOLTIP_PAD * 2;
-    const h = this.plantTooltipText.height + TOOLTIP_PAD * 2;
-    const tx = Phaser.Math.Clamp(x + 10, 4, this.tankW - w - 4);
-    const ty = Phaser.Math.Clamp(y - h - 8, 4, this.tankH - h - 4);
-    this.plantTooltipBg.setPosition(tx, ty).setSize(w, h).setVisible(true);
-    this.plantTooltipText.setPosition(tx + TOOLTIP_PAD, ty + TOOLTIP_PAD).setVisible(true);
+  private showPlantTooltip(name: string, type: string, x: number, y: number, pinned = false) {
+    this.emitTooltip({
+      kind: 'plant',
+      pinned,
+      x,
+      y,
+      tankW: this.tankW,
+      tankH: this.tankH,
+      title: name,
+      subtitle: `Type: ${this.getPlantTypeLabel(type)}`,
+      stats: [
+        { label: 'Role', value: this.getPlantTypeLabel(type), tone: 'info' },
+      ],
+      detail: this.getPlantBenefit(type),
+    });
   }
 
   private hidePlantTooltip() {
-    this.plantTooltipBg?.setVisible(false);
-    this.plantTooltipText?.setVisible(false);
+    this.emitTooltip(null);
   }
 
   private renderPlants() {
     const plants = this.tank.plants ?? [];
-
-    // Hover tooltip overlay
-    this.plantTooltipBg = this.add.rectangle(0, 0, 10, 10, 0x020910, 0.96)
-      .setOrigin(0, 0)
-      .setDepth(1000)
-      .setVisible(false);
-    this.plantTooltipText = this.add.text(0, 0, '', {
-      fontFamily: 'Segoe UI',
-      fontSize: '13px',
-      color: '#eef7ff',
-      stroke: '#02101b',
-      strokeThickness: 2,
-      shadow: { offsetX: 0, offsetY: 1, color: '#000000', blur: 1, fill: true },
-    })
-      .setLineSpacing(1)
-      .setDepth(1001)
-      .setVisible(false);
 
     plants.forEach(p => {
       const key = p.type === 'java_moss'
@@ -422,18 +371,6 @@ export class TankScene extends Phaser.Scene {
       sprite.setInteractive({ useHandCursor: true, pixelPerfect: true });
 
       const name = this.getPlantName(p.itemId, p.type);
-      sprite.on('pointerover', (pointer: Phaser.Input.Pointer) => {
-        if (this.pinnedTooltipTarget) return;
-        this.showPlantTooltip(name, p.type, pointer.worldX, pointer.worldY);
-      });
-      sprite.on('pointermove', (pointer: Phaser.Input.Pointer) => {
-        if (this.pinnedTooltipTarget) return;
-        this.showPlantTooltip(name, p.type, pointer.worldX, pointer.worldY);
-      });
-      sprite.on('pointerout', () => {
-        if (this.pinnedTooltipTarget) return;
-        this.hidePlantTooltip();
-      });
       sprite.on('pointerdown', () => {
         this.pinTooltipToPlant(p.id);
       });
@@ -667,5 +604,9 @@ export class TankScene extends Phaser.Scene {
       gameAge: this.tank.gameAge,
       cyclePhase: this.nitrogenCycle.getCyclePhase(this.tank),
     };
+  }
+
+  shutdown() {
+    this.emitTooltip(null);
   }
 }
