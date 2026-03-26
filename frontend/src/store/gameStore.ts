@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { nanoid } from 'nanoid';
-import type { TankState, ShrimpState, WaterParams } from '../game/types';
+import type { TankState, ShrimpState, WaterParams, PlantState } from '../game/types';
 import type { TankStateSnapshot } from '../game/ShrimpGame';
 import { STARTING_CASH } from '../game/data/gameConfig';
 import { NEO_TAP_DEFAULTS } from '../game/systems/WaterParamSystem';
@@ -47,6 +47,7 @@ interface GameState {
   setActiveTank: (tankId: string) => void;
   getActiveTank: () => TankState | null;
   updateActiveTankParams: (params: Partial<WaterParams>) => void;
+  addPlantToActiveTank: (itemId: string, coverIncrease: number) => TankState | null;
 
   // Shrimp management
   addShrimpToActiveTank: (variantId: string, count?: number) => ShrimpState[];
@@ -202,6 +203,7 @@ export const useGameStore = create<GameState>()(
           tannins: 0,
           plantCoverScore: 0,
           biofilmLevel: 0,
+          plants: [],
           shrimp: [],
           gameAge: 0,
         };
@@ -241,6 +243,48 @@ export const useGameStore = create<GameState>()(
             ),
           },
         });
+      },
+
+      addPlantToActiveTank: (itemId, coverIncrease) => {
+        const p = get().profile;
+        if (!p || !p.activeTankId) return null;
+
+        const tank = p.tanks.find(t => t.id === p.activeTankId);
+        if (!tank) return null;
+
+        const plantType: PlantState['type'] =
+          itemId === 'java_moss' ? 'java_moss' :
+          itemId === 'anubias' ? 'anubias' :
+          'other';
+
+        const dims = { width: tank.gallons * 16 + 480, height: 320 };
+        const substrateY = Math.floor(dims.height * 0.85);
+        const plant: PlantState = {
+          id: nanoid(),
+          itemId,
+          type: plantType,
+          x: 40 + Math.random() * (dims.width - 80),
+          y: substrateY - (plantType === 'java_moss' ? 8 : 14),
+          scale: plantType === 'java_moss' ? 0.9 + Math.random() * 0.3 : 0.75 + Math.random() * 0.2,
+        };
+
+        let updatedTank: TankState | null = null;
+        set({
+          profile: {
+            ...p,
+            tanks: p.tanks.map(t => {
+              if (t.id !== p.activeTankId) return t;
+              updatedTank = {
+                ...t,
+                plantCoverScore: Math.min(20, t.plantCoverScore + coverIncrease),
+                plants: [...(t.plants ?? []), plant],
+              };
+              return updatedTank;
+            }),
+          },
+        });
+
+        return updatedTank;
       },
 
       addShrimpToActiveTank: (variantId, count = 1) => {

@@ -4,13 +4,14 @@ import { useGameStore } from '../../store/gameStore';
 import { STORE_BY_CATEGORY, STORE_ITEMS } from '../../game/data/storeItems';
 import { SHRIMP_VARIANTS } from '../../game/data/shrimpVariants';
 import type { StoreItem } from '../../game/data/storeItems';
+import { getGame, GAME_EVENTS } from '../../game/ShrimpGame';
 
 const CATEGORIES = [
   { id: 'tanks', label: '🪣 Tanks' },
   { id: 'equipment', label: '⚙️ Equipment' },
   { id: 'food', label: '🍽️ Food' },
-  { id: 'additive', label: '🧪 Additives' },
-  { id: 'plant', label: '🌿 Plants' },
+  { id: 'additives', label: '🧪 Additives' },
+  { id: 'plants', label: '🌿 Plants' },
   { id: 'decor', label: '🪨 Decor' },
   { id: 'shrimp', label: '🦐 Shrimp' },
 ] as const;
@@ -21,6 +22,7 @@ export function ShopModal() {
   const deductCash = useGameStore(s => s.deductCash);
   const purchaseTank = useGameStore(s => s.purchaseTank);
   const addShrimpToActiveTank = useGameStore(s => s.addShrimpToActiveTank);
+  const addPlantToActiveTank = useGameStore(s => s.addPlantToActiveTank);
   const addInventoryItem = useGameStore(s => s.addInventoryItem);
   const notify = useUIStore(s => s.pushNotification);
 
@@ -49,6 +51,25 @@ export function ShopModal() {
       closeModal();
       return;
     }
+
+    if (item.category === 'plants') {
+      if (!profile.activeTankId) {
+        notify('Set up a tank first before adding plants.', 'warning');
+        return;
+      }
+      const cover = Number(item.meta?.coverScore ?? 4);
+      if (deductCash(item.price)) {
+        addInventoryItem(item.id);
+        const updatedTank = addPlantToActiveTank(item.id, cover);
+        if (updatedTank) {
+          getGame()?.events.emit(GAME_EVENTS.SET_TANK, updatedTank);
+        }
+        notify(`Added ${item.name}. Plant cover increased (+${cover}).`, 'success');
+      }
+      setConfirmItem(null);
+      return;
+    }
+
     if (deductCash(item.price)) {
       addInventoryItem(item.id);
       notify(`Purchased ${item.name}`, 'success');

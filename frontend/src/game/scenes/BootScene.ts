@@ -30,6 +30,7 @@ export class BootScene extends Phaser.Scene {
   create() {
     this.generateAllTextures();
     this.generateTankTextures();
+    this.generatePlantTextures();
     this.generateParticleTextures();
     this.scene.start('TankScene');
   }
@@ -202,6 +203,61 @@ export class BootScene extends Phaser.Scene {
       ctx.arc(3, 3, 2, 0, Math.PI * 2);
       ctx.stroke();
       this.textures.addCanvas('bubble', b);
+    }
+  }
+
+  private generatePlantTextures() {
+    // Java moss clump (pixel-ish organic tuft)
+    if (!this.textures.exists('plant_java_moss')) {
+      const c = document.createElement('canvas');
+      c.width = 22;
+      c.height = 16;
+      const ctx = c.getContext('2d')!;
+
+      const dark = '#1f6b33';
+      const mid = '#2f8a3e';
+      const light = '#4eb35d';
+
+      const dots: Array<[number, number, string]> = [
+        [4, 12, dark], [6, 11, mid], [8, 12, dark], [10, 10, mid], [12, 12, dark], [14, 11, mid], [16, 12, dark],
+        [5, 9, mid], [7, 8, light], [9, 7, mid], [11, 8, light], [13, 7, mid], [15, 9, light],
+        [6, 6, light], [8, 5, mid], [10, 4, light], [12, 5, mid], [14, 6, light],
+      ];
+      dots.forEach(([x, y, color]) => {
+        ctx.fillStyle = color;
+        ctx.fillRect(x, y, 2, 2);
+      });
+
+      this.textures.addCanvas('plant_java_moss', c);
+    }
+
+    // Anubias leaf cluster (broad leaves + short stem)
+    if (!this.textures.exists('plant_anubias')) {
+      const c = document.createElement('canvas');
+      c.width = 22;
+      c.height = 20;
+      const ctx = c.getContext('2d')!;
+
+      ctx.fillStyle = '#5d4324';
+      ctx.fillRect(10, 12, 2, 8);
+
+      const leaves: Array<[number, number, number, number, string]> = [
+        [6, 4, 6, 10, '#2d7d3f'],
+        [10, 2, 6, 11, '#37944a'],
+        [13, 5, 5, 9, '#2f8845'],
+      ];
+      leaves.forEach(([x, y, w, h, color]) => {
+        ctx.fillStyle = color;
+        ctx.fillRect(x, y, w, h);
+      });
+
+      // Leaf highlights
+      ctx.fillStyle = 'rgba(174,255,188,0.45)';
+      ctx.fillRect(8, 6, 1, 6);
+      ctx.fillRect(12, 5, 1, 6);
+      ctx.fillRect(15, 7, 1, 5);
+
+      this.textures.addCanvas('plant_anubias', c);
     }
   }
 }

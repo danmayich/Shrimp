@@ -20,6 +20,7 @@ const TICKS_PER_GAME_DAY = TICKS_PER_GAME_HOUR * 24;
 export class TankScene extends Phaser.Scene {
   private tank!: TankState;
   private shrimpSprites: Map<string, ShrimpSprite> = new Map();
+  private plantSprites: Map<string, Phaser.GameObjects.Image> = new Map();
   private foodSprites: Map<string, Phaser.GameObjects.Image> = new Map();
   private foodParticles: FoodParticleState[] = [];
   private bubbleParticles: Phaser.GameObjects.Image[] = [];
@@ -74,6 +75,7 @@ export class TankScene extends Phaser.Scene {
     // Clear previous objects
     this.children.removeAll(true);
     this.shrimpSprites.clear();
+    this.plantSprites.clear();
     this.foodSprites.clear();
     this.foodParticles = [];
 
@@ -93,6 +95,9 @@ export class TankScene extends Phaser.Scene {
     if (this.textures.exists(subKey)) {
       this.add.image(0, this.substrateY, subKey).setOrigin(0, 0);
     }
+
+    // Plants (rendered before shrimp so shrimp can swim above)
+    this.renderPlants();
 
     // Water bubbles (ambient) from filter
     if (tank.filterType !== 'none') {
@@ -114,6 +119,22 @@ export class TankScene extends Phaser.Scene {
   private addShrimpSprite(state: import('../types').ShrimpState) {
     const sprite = new ShrimpSprite(this, state, this.tankW, this.tankH, this.substrateY);
     this.shrimpSprites.set(state.id, sprite);
+  }
+
+  private renderPlants() {
+    const plants = this.tank.plants ?? [];
+    plants.forEach(p => {
+      const key = p.type === 'java_moss'
+        ? 'plant_java_moss'
+        : p.type === 'anubias'
+          ? 'plant_anubias'
+          : 'plant_java_moss';
+
+      const sprite = this.add.image(p.x, p.y, key).setOrigin(0.5, 1);
+      sprite.setScale(p.scale);
+      sprite.setAlpha(0.95);
+      this.plantSprites.set(p.id, sprite);
+    });
   }
 
   private spawnBubbleEmitter() {
