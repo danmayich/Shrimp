@@ -42,6 +42,7 @@ export class ShrimpSprite extends Phaser.GameObjects.Image {
     this.substrateY = substrateY;
     this.setOrigin(0.5, 0.5);
     this.applyScale();
+    this.applyFacing(this.shrimpState.facingRight);
     scene.add.existing(this as Phaser.GameObjects.Image);
   }
 
@@ -61,6 +62,12 @@ export class ShrimpSprite extends Phaser.GameObjects.Image {
     } else {
       this.setScale(1);
     }
+  }
+
+  private applyFacing(facingRight: boolean) {
+    this.shrimpState.facingRight = facingRight;
+    // Pixel source art is drawn facing left, so flip when moving/facing right.
+    this.setFlipX(facingRight);
   }
 
   update(delta: number, foodParticles: FoodParticle[]) {
@@ -84,8 +91,7 @@ export class ShrimpSprite extends Phaser.GameObjects.Image {
 
     // ── Force flip based on velocity direction ───────────────────────────────
     if (this.vx !== 0) {
-      this.setFlipX(this.vx < 0);
-      this.shrimpState.facingRight = this.vx > 0;
+      this.applyFacing(this.vx > 0);
     }
 
     // ── State machine ────────────────────────────────────────────────────────
@@ -118,6 +124,9 @@ export class ShrimpSprite extends Phaser.GameObjects.Image {
           this.stateTimer = 1500;
           this.vx = 0; this.vy = 0;
         } else {
+          if (Math.abs(dx) > 0.1) {
+            this.applyFacing(dx > 0);
+          }
           const speed = SEEK_FOOD_SPEED * (delta / 1000);
           this.x += (dx / dist) * speed;
           this.y += (dy / dist) * speed;
@@ -159,7 +168,11 @@ export class ShrimpSprite extends Phaser.GameObjects.Image {
 
       case 'breeding_swim':
         // Males swim erratically when female molts
-        this.x += Math.sin(Date.now() * 0.01 + this.shrimpState.id.charCodeAt(0)) * 2;
+        const driftX = Math.sin(Date.now() * 0.01 + this.shrimpState.id.charCodeAt(0)) * 2;
+        if (Math.abs(driftX) > 0.05) {
+          this.applyFacing(driftX > 0);
+        }
+        this.x += driftX;
         this.y += Math.cos(Date.now() * 0.013 + this.shrimpState.id.charCodeAt(1)) * 2;
         this.clampToBounds();
         this.shrimpState.x = this.x;

@@ -89,12 +89,17 @@ export class BootScene extends Phaser.Scene {
 
   /** Generate tank background, substrate, water overlay, and glass glare textures */
   private generateTankTextures() {
-    const sizes = [5, 10, 20, 40];
+    const sizes = [5, 10, 20, 40, 55, 60, 75, 125, 200];
     const dims: Record<number, [number, number]> = {
       5:  [480, 260],
       10: [640, 320],
       20: [800, 380],
       40: [960, 440],
+      55: [1024, 460],
+      60: [1120, 430],
+      75: [1200, 500],
+      125: [1440, 560],
+      200: [1680, 620],
     };
 
     sizes.forEach(gal => {

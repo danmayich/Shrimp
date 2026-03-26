@@ -26,6 +26,11 @@ export const TANK_CANVAS: Record<number, { width: number; height: number }> = {
   10: { width: 640, height: 320 },
   20: { width: 800, height: 380 },
   40: { width: 960, height: 440 },
+  55: { width: 1024, height: 460 },
+  60: { width: 1120, height: 430 },
+  75: { width: 1200, height: 500 },
+  125: { width: 1440, height: 560 },
+  200: { width: 1680, height: 620 },
 };
 
 /** Pixel art cell size */

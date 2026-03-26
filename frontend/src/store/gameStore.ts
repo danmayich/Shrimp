@@ -4,6 +4,7 @@ import { nanoid } from 'nanoid';
 import type { TankState, ShrimpState, WaterParams, PlantState } from '../game/types';
 import type { TankStateSnapshot } from '../game/ShrimpGame';
 import { STARTING_CASH } from '../game/data/gameConfig';
+import { TANK_CANVAS } from '../game/data/gameConfig';
 import { NEO_TAP_DEFAULTS } from '../game/systems/WaterParamSystem';
 import type { SpeedMultiplier } from '../game/data/gameConfig';
 
@@ -261,7 +262,7 @@ export const useGameStore = create<GameState>()(
           itemId === 'anubias' ? 'anubias' :
           'other';
 
-        const dims = { width: tank.gallons * 16 + 480, height: 320 };
+        const dims = TANK_CANVAS[tank.gallons] ?? TANK_CANVAS[10];
         const substrateY = Math.floor(dims.height * 0.85);
         const plant: PlantState = {
           id: nanoid(),
@@ -318,7 +319,7 @@ export const useGameStore = create<GameState>()(
         const tank = p.tanks.find(t => t.id === p.activeTankId);
         if (!tank) return null;
 
-        const dims = { width: tank.gallons * 16 + 480, height: 320 };
+        const dims = TANK_CANVAS[tank.gallons] ?? TANK_CANVAS[10];
         const substrateY = Math.floor(dims.height * 0.85);
         const existingVisual = tank.filterVisual;
         const defaultVisual = {
@@ -369,7 +370,7 @@ export const useGameStore = create<GameState>()(
         const tank = p.tanks.find(t => t.id === p.activeTankId);
         if (!tank) return [];
 
-        const dims = { width: tank.gallons * 16 + 480, height: 320 };
+        const dims = TANK_CANVAS[tank.gallons] ?? TANK_CANVAS[10];
         const newShrimp = Array.from({ length: count }, () =>
           makeShrimpState(variantId, dims.width, dims.height)
         );
