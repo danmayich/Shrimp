@@ -19,6 +19,7 @@ export const GAME_EVENTS = {
   WATER_WARNINGS:    'out:water_warnings',
   BREEDING_EVENT:    'out:breeding_event',
   TANK_TOOLTIP:      'out:tank_tooltip',
+  PLANT_MOVED:       'out:plant_moved',
 } as const;
 
 export type GameEventMap = {
@@ -26,8 +27,15 @@ export type GameEventMap = {
   [GAME_EVENTS.WATER_WARNINGS]: string[];
   [GAME_EVENTS.BREEDING_EVENT]: BreedingEvent;
   [GAME_EVENTS.TANK_TOOLTIP]: TankTooltipData | null;
+  [GAME_EVENTS.PLANT_MOVED]: PlantMovedEvent;
   [GAME_EVENTS.SET_SPEED]: SpeedMultiplier;
 };
+
+export interface PlantMovedEvent {
+  plantId: string;
+  x: number;
+  y: number;
+}
 
 export interface TankStateSnapshot {
   params: import('./types').WaterParams;

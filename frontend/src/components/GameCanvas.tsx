@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { createShrimpGame, destroyShrimpGame, GAME_EVENTS } from '../game/ShrimpGame';
 import type { TankStateSnapshot } from '../game/ShrimpGame';
 import type { TankTooltipData } from '../game/ShrimpGame';
+import type { PlantMovedEvent } from '../game/ShrimpGame';
 import type { BreedingEvent } from '../game/systems/BreedingSystem';
 import { useGameStore } from '../store/gameStore';
 import { useUIStore } from '../store/uiStore';
@@ -13,6 +14,7 @@ export function GameCanvas() {
   const setTankSnapshot = useGameStore(s => s.setTankSnapshot);
   const setWaterWarnings = useGameStore(s => s.setWaterWarnings);
   const addBreedingNotification = useGameStore(s => s.addBreedingNotification);
+  const updatePlantPositionInActiveTank = useGameStore(s => s.updatePlantPositionInActiveTank);
   const pushNotification = useUIStore(s => s.pushNotification);
   const [tooltip, setTooltip] = useState<TankTooltipData | null>(null);
   const profile = useGameStore(s => s.profile);
@@ -52,13 +54,16 @@ export function GameCanvas() {
     game.events.on(GAME_EVENTS.TANK_TOOLTIP, (data: TankTooltipData | null) => {
       setTooltip(data);
     });
+    game.events.on(GAME_EVENTS.PLANT_MOVED, ({ plantId, x, y }: PlantMovedEvent) => {
+      updatePlantPositionInActiveTank(plantId, x, y);
+    });
 
     return () => {
       setTooltip(null);
       destroyShrimpGame();
       gameRef.current = null;
     };
-  }, []);
+  }, [addBreedingNotification, pushNotification, setTankSnapshot, setWaterWarnings, updatePlantPositionInActiveTank]);
 
   // Send active tank to Phaser when it changes
   useEffect(() => {

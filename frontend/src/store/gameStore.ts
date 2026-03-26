@@ -48,6 +48,7 @@ interface GameState {
   getActiveTank: () => TankState | null;
   updateActiveTankParams: (params: Partial<WaterParams>) => void;
   addPlantToActiveTank: (itemId: string, coverIncrease: number) => TankState | null;
+  updatePlantPositionInActiveTank: (plantId: string, x: number, y: number) => void;
 
   // Shrimp management
   addShrimpToActiveTank: (variantId: string, count?: number) => ShrimpState[];
@@ -285,6 +286,26 @@ export const useGameStore = create<GameState>()(
         });
 
         return updatedTank;
+      },
+
+      updatePlantPositionInActiveTank: (plantId, x, y) => {
+        const p = get().profile;
+        if (!p || !p.activeTankId) return;
+
+        set({
+          profile: {
+            ...p,
+            tanks: p.tanks.map(t => {
+              if (t.id !== p.activeTankId) return t;
+              return {
+                ...t,
+                plants: (t.plants ?? []).map(plant =>
+                  plant.id === plantId ? { ...plant, x, y } : plant
+                ),
+              };
+            }),
+          },
+        });
       },
 
       addShrimpToActiveTank: (variantId, count = 1) => {

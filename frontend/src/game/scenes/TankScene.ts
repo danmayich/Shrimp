@@ -11,7 +11,7 @@ import { GAME_EVENTS } from '../ShrimpGame';
 import type { TankTooltipData } from '../ShrimpGame';
 import { VARIANT_MAP } from '../data/shrimpVariants';
 import { STORE_ITEMS } from '../data/storeItems';
-import type { ShrimpBehavior, ShrimpState } from '../types';
+import type { PlantState, ShrimpBehavior, ShrimpState } from '../types';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // TankScene — the main Phaser simulation
@@ -21,6 +21,8 @@ const TICKS_PER_GAME_HOUR = TICKS_PER_GAME_MINUTE * 60;
 const TICKS_PER_GAME_DAY = TICKS_PER_GAME_HOUR * 24;
 const STORE_ITEM_NAME_BY_ID = new Map(STORE_ITEMS.map(i => [i.id, i.name]));
 const PLANT_RENDER_SCALE_MULTIPLIER = 1.4;
+const PLANT_DRAG_TOP_PADDING = 12;
+const PLANT_DRAG_BOTTOM_PADDING = 6;
 
 export class TankScene extends Phaser.Scene {
   private tank!: TankState;
@@ -43,6 +45,7 @@ export class TankScene extends Phaser.Scene {
   private tankW = 0;
   private tankH = 0;
   private pinnedTooltipTarget: { kind: 'shrimp' | 'plant'; id: string } | null = null;
+  private draggingPlantId: string | null = null;
 
   constructor() {
     super({ key: 'TankScene' });
@@ -69,6 +72,9 @@ export class TankScene extends Phaser.Scene {
     // Tooltip pinning lifecycle
     this.input.on('pointermove', this.handlePointerMove, this);
     this.input.on('pointerdown', this.handlePointerDown, this);
+    this.input.on('dragstart', this.handleDragStart, this);
+    this.input.on('drag', this.handleDrag, this);
+    this.input.on('dragend', this.handleDragEnd, this);
     this.input.on('gameout', this.clearPinnedTooltip, this);
   }
 
@@ -77,7 +83,7 @@ export class TankScene extends Phaser.Scene {
    * Clears the scene and rebuilds everything from TankState.
    */
   private initTank(tank: TankState) {
-    this.tank = tank;
+    this.tank = this.cloneTankState(tank);
     const dims = TANK_CANVAS[tank.gallons] ?? TANK_CANVAS[10];
     this.tankW = dims.width;
     this.tankH = dims.height;
@@ -89,6 +95,7 @@ export class TankScene extends Phaser.Scene {
     this.plantSprites.clear();
     this.foodSprites.clear();
     this.foodParticles = [];
+    this.draggingPlantId = null;
     this.clearPinnedTooltip();
 
     // Resize the Phaser canvas
@@ -353,6 +360,97 @@ export class TankScene extends Phaser.Scene {
     this.emitTooltip(null);
   }
 
+  private cloneTankState(tank: TankState): TankState {
+    return {
+      ...tank,
+      params: { ...tank.params },
+      plants: (tank.plants ?? []).map(plant => ({ ...plant })),
+      shrimp: tank.shrimp.map(shrimp => ({ ...shrimp })),
+    };
+  }
+
+  private getPlantState(id: string): PlantState | undefined {
+    return this.tank.plants?.find(plant => plant.id === id);
+  }
+
+  private getPlantDragBounds(sprite: Phaser.GameObjects.Image) {
+    const displayWidth = sprite.width * Math.abs(sprite.scaleX);
+    const displayHeight = sprite.height * Math.abs(sprite.scaleY);
+    const minX = Math.ceil(displayWidth / 2);
+    const maxX = Math.floor(this.tankW - displayWidth / 2);
+    const minY = Math.ceil(displayHeight + PLANT_DRAG_TOP_PADDING);
+    const maxY = Math.floor(this.substrateY + PLANT_DRAG_BOTTOM_PADDING);
+
+    return {
+      minX,
+      maxX,
+      minY: Math.min(minY, maxY),
+      maxY,
+    };
+  }
+
+  private isPlantObject(gameObject: Phaser.GameObjects.GameObject): gameObject is Phaser.GameObjects.Image {
+    return gameObject instanceof Phaser.GameObjects.Image && gameObject.getData('tooltipKind') === 'plant';
+  }
+
+  private handleDragStart(
+    _pointer: Phaser.Input.Pointer,
+    gameObject: Phaser.GameObjects.GameObject,
+  ) {
+    if (!this.isPlantObject(gameObject)) return;
+
+    const plantId = gameObject.getData('tooltipId') as string | undefined;
+    if (!plantId) return;
+
+    this.draggingPlantId = plantId;
+    this.pinTooltipToPlant(plantId);
+  }
+
+  private handleDrag(
+    _pointer: Phaser.Input.Pointer,
+    gameObject: Phaser.GameObjects.GameObject,
+    dragX: number,
+    dragY: number,
+  ) {
+    if (!this.isPlantObject(gameObject)) return;
+
+    const plantId = gameObject.getData('tooltipId') as string | undefined;
+    if (!plantId) return;
+
+    const bounds = this.getPlantDragBounds(gameObject);
+    const nextX = Math.round(Phaser.Math.Clamp(dragX, bounds.minX, bounds.maxX));
+    const nextY = Math.round(Phaser.Math.Clamp(dragY, bounds.minY, bounds.maxY));
+
+    gameObject.setPosition(nextX, nextY);
+
+    const plant = this.getPlantState(plantId);
+    if (plant) {
+      plant.x = nextX;
+      plant.y = nextY;
+    }
+
+    if (this.pinnedTooltipTarget?.kind === 'plant' && this.pinnedTooltipTarget.id === plantId) {
+      this.refreshPinnedTooltip();
+    }
+  }
+
+  private handleDragEnd(
+    _pointer: Phaser.Input.Pointer,
+    gameObject: Phaser.GameObjects.GameObject,
+  ) {
+    if (!this.isPlantObject(gameObject)) return;
+
+    const plantId = gameObject.getData('tooltipId') as string | undefined;
+    if (!plantId) return;
+
+    this.draggingPlantId = null;
+    this.game.events.emit(GAME_EVENTS.PLANT_MOVED, {
+      plantId,
+      x: Math.round(gameObject.x),
+      y: Math.round(gameObject.y),
+    });
+  }
+
   private renderPlants() {
     const plants = this.tank.plants ?? [];
 
@@ -369,6 +467,7 @@ export class TankScene extends Phaser.Scene {
       sprite.setScale(p.scale * PLANT_RENDER_SCALE_MULTIPLIER);
       sprite.setAlpha(0.95);
       sprite.setInteractive({ useHandCursor: true, pixelPerfect: true });
+      this.input.setDraggable(sprite);
 
       const name = this.getPlantName(p.itemId, p.type);
       sprite.on('pointerdown', () => {
