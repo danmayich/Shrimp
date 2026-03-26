@@ -9,6 +9,7 @@ import type { SpeedMultiplier } from '../data/gameConfig';
 import { TANK_CANVAS, SPRITE_SIZE, TICKS_PER_GAME_MINUTE } from '../data/gameConfig';
 import { GAME_EVENTS } from '../ShrimpGame';
 import { VARIANT_MAP } from '../data/shrimpVariants';
+import { STORE_ITEMS } from '../data/storeItems';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // TankScene — the main Phaser simulation
@@ -16,6 +17,8 @@ import { VARIANT_MAP } from '../data/shrimpVariants';
 
 const TICKS_PER_GAME_HOUR = TICKS_PER_GAME_MINUTE * 60;
 const TICKS_PER_GAME_DAY = TICKS_PER_GAME_HOUR * 24;
+const STORE_ITEM_NAME_BY_ID = new Map(STORE_ITEMS.map(i => [i.id, i.name]));
+const PLANT_RENDER_SCALE_MULTIPLIER = 1.4;
 
 export class TankScene extends Phaser.Scene {
   private tank!: TankState;
@@ -37,6 +40,8 @@ export class TankScene extends Phaser.Scene {
   private substrateY = 0;
   private tankW = 0;
   private tankH = 0;
+  private plantTooltipText?: Phaser.GameObjects.Text;
+  private plantTooltipBg?: Phaser.GameObjects.Rectangle;
 
   constructor() {
     super({ key: 'TankScene' });
@@ -123,6 +128,45 @@ export class TankScene extends Phaser.Scene {
 
   private renderPlants() {
     const plants = this.tank.plants ?? [];
+
+    // Hover tooltip overlay
+    this.plantTooltipBg = this.add.rectangle(0, 0, 10, 10, 0x041324, 0.88)
+      .setOrigin(0, 0)
+      .setDepth(1000)
+      .setVisible(false);
+    this.plantTooltipText = this.add.text(0, 0, '', {
+      fontFamily: 'Segoe UI',
+      fontSize: '12px',
+      color: '#dce8f5',
+    })
+      .setDepth(1001)
+      .setVisible(false);
+
+    const plantName = (itemId: string, type: string): string => {
+      const fromStore = STORE_ITEM_NAME_BY_ID.get(itemId);
+      if (fromStore) return fromStore;
+      if (type === 'java_moss') return 'Java Moss';
+      if (type === 'anubias') return 'Anubias';
+      return 'Aquarium Plant';
+    };
+
+    const showPlantTooltip = (name: string, x: number, y: number) => {
+      if (!this.plantTooltipText || !this.plantTooltipBg) return;
+      this.plantTooltipText.setText(name);
+      const pad = 6;
+      const w = this.plantTooltipText.width + pad * 2;
+      const h = this.plantTooltipText.height + pad * 2;
+      const tx = Phaser.Math.Clamp(x + 10, 4, this.tankW - w - 4);
+      const ty = Phaser.Math.Clamp(y - h - 8, 4, this.tankH - h - 4);
+      this.plantTooltipBg.setPosition(tx, ty).setSize(w, h).setVisible(true);
+      this.plantTooltipText.setPosition(tx + pad, ty + pad).setVisible(true);
+    };
+
+    const hidePlantTooltip = () => {
+      this.plantTooltipBg?.setVisible(false);
+      this.plantTooltipText?.setVisible(false);
+    };
+
     plants.forEach(p => {
       const key = p.type === 'java_moss'
         ? 'plant_java_moss'
@@ -131,10 +175,25 @@ export class TankScene extends Phaser.Scene {
           : 'plant_java_moss';
 
       const sprite = this.add.image(p.x, p.y, key).setOrigin(0.5, 1);
-      sprite.setScale(p.scale);
+      sprite.setScale(p.scale * PLANT_RENDER_SCALE_MULTIPLIER);
       sprite.setAlpha(0.95);
+      sprite.setInteractive({ useHandCursor: true, pixelPerfect: true });
+
+      const name = plantName(p.itemId, p.type);
+      sprite.on('pointerover', (pointer: Phaser.Input.Pointer) => {
+        showPlantTooltip(name, pointer.worldX, pointer.worldY);
+      });
+      sprite.on('pointermove', (pointer: Phaser.Input.Pointer) => {
+        showPlantTooltip(name, pointer.worldX, pointer.worldY);
+      });
+      sprite.on('pointerout', hidePlantTooltip);
+
       this.plantSprites.set(p.id, sprite);
     });
+
+    if (plants.length === 0) {
+      hidePlantTooltip();
+    }
   }
 
   private spawnBubbleEmitter() {
