@@ -28,17 +28,24 @@ const PLANT_NITRATE_ABSORPTION = 0.005;
 export class NitrogenCycle {
   speedMultiplier = 1;
 
-  private getFilterSupport(tank: TankState): number {
-    switch (tank.filterType) {
-      case 'sponge_large':
-      case 'hob':
-        return 1.12;
-      case 'sponge':
-        return 1.0;
-      case 'none':
-      default:
-        return 0.68;
+  private getInstalledFilters(tank: TankState) {
+    if (Array.isArray(tank.filters) && tank.filters.length > 0) return tank.filters;
+    if (tank.filterType && tank.filterType !== 'none') {
+      return [{ type: tank.filterType }];
     }
+    return [];
+  }
+
+  private getFilterSupport(tank: TankState): number {
+    const filters = this.getInstalledFilters(tank);
+    if (filters.length === 0) return 0.68;
+
+    const supportBoost = filters.reduce((total, filter) => {
+      if (filter.type === 'sponge') return total + 0.32;
+      return total + 0.44;
+    }, 0);
+
+    return Math.min(1.8, 0.68 + supportBoost);
   }
 
   /** Apply one game-hour of nitrogen cycle activity */

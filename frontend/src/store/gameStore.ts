@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { nanoid } from 'nanoid';
-import type { TankState, ShrimpState, WaterParams, PlantState } from '../game/types';
+import type { TankState, ShrimpState, WaterParams, PlantState, InstalledFilterType, FilterVisualState } from '../game/types';
 import type { TankStateSnapshot } from '../game/ShrimpGame';
 import { STARTING_CASH } from '../game/data/gameConfig';
 import { TANK_CANVAS } from '../game/data/gameConfig';
@@ -50,8 +50,8 @@ interface GameState {
   updateActiveTankParams: (params: Partial<WaterParams>) => void;
   addPlantToActiveTank: (itemId: string, coverIncrease: number) => TankState | null;
   updatePlantPositionInActiveTank: (plantId: string, x: number, y: number) => void;
-  installFilterInActiveTank: (filterType: TankState['filterType']) => TankState | null;
-  updateFilterPositionInActiveTank: (x: number, y: number) => void;
+  installFilterInActiveTank: (filterType: InstalledFilterType) => TankState | null;
+  updateFilterPositionInActiveTank: (filterId: string, x: number, y: number) => void;
 
   // Shrimp management
   addShrimpToActiveTank: (variantId: string, count?: number) => ShrimpState[];
@@ -100,6 +100,58 @@ const makeShrimpState = (variantId: string, tankW: number, tankH: number): Shrim
   listedPrice: null,
 });
 
+const FILTER_SLOT_X_FACTORS = [0.82, 0.18, 0.5, 0.68, 0.32, 0.9, 0.1] as const;
+
+const getDefaultFilterVisual = (gallons: number, index: number): FilterVisualState => {
+  const dims = TANK_CANVAS[gallons] ?? TANK_CANVAS[10];
+  const substrateY = Math.floor(dims.height * 0.85);
+  const slot = FILTER_SLOT_X_FACTORS[index] ?? FILTER_SLOT_X_FACTORS[index % FILTER_SLOT_X_FACTORS.length];
+
+  return {
+    x: Math.round(dims.width * slot),
+    y: substrateY + 4,
+  };
+};
+
+const normalizeTank = (tank: TankState): TankState => {
+  const existingFilters = Array.isArray(tank.filters) ? tank.filters : [];
+
+  if (existingFilters.length > 0) {
+    return {
+      ...tank,
+      filters: existingFilters.map((filter, index) => ({
+        ...filter,
+        visual: filter.visual ?? getDefaultFilterVisual(tank.gallons, index),
+      })),
+    };
+  }
+
+  if (tank.filterType && tank.filterType !== 'none') {
+    return {
+      ...tank,
+      filters: [{
+        id: nanoid(),
+        type: tank.filterType,
+        visual: tank.filterVisual ?? getDefaultFilterVisual(tank.gallons, 0),
+      }],
+      filterType: 'none',
+      filterVisual: null,
+    };
+  }
+
+  return {
+    ...tank,
+    filters: [],
+    filterType: 'none',
+    filterVisual: null,
+  };
+};
+
+const normalizeProfile = (profile: PlayerProfile): PlayerProfile => ({
+  ...profile,
+  tanks: profile.tanks.map(normalizeTank),
+});
+
 export const useGameStore = create<GameState>()(
   persist(
     (set, get) => ({
@@ -113,7 +165,7 @@ export const useGameStore = create<GameState>()(
         set({ profile: defaultProfile(username, id) });
       },
 
-      setProfile: (profile) => set({ profile }),
+      setProfile: (profile) => set({ profile: normalizeProfile(profile) }),
 
       clearProfile: () => set({
         profile: null,
@@ -195,6 +247,7 @@ export const useGameStore = create<GameState>()(
           cycled: false,
           cyclingDaysElapsed: 0,
           bacteriaLevel: 0,
+          filters: [],
           filterType: 'none',
           hasHeater: false,
           hasLight: false,
@@ -319,12 +372,10 @@ export const useGameStore = create<GameState>()(
         const tank = p.tanks.find(t => t.id === p.activeTankId);
         if (!tank) return null;
 
-        const dims = TANK_CANVAS[tank.gallons] ?? TANK_CANVAS[10];
-        const substrateY = Math.floor(dims.height * 0.85);
-        const existingVisual = tank.filterVisual;
-        const defaultVisual = {
-          x: Math.round(dims.width * 0.82),
-          y: substrateY + 4,
+        const nextFilter = {
+          id: nanoid(),
+          type: filterType,
+          visual: getDefaultFilterVisual(tank.gallons, Array.isArray(tank.filters) ? tank.filters.length : 0),
         };
 
         let updatedTank: TankState | null = null;
@@ -335,8 +386,9 @@ export const useGameStore = create<GameState>()(
               if (t.id !== p.activeTankId) return t;
               updatedTank = {
                 ...t,
-                filterType,
-                filterVisual: existingVisual ? { ...existingVisual } : defaultVisual,
+                filters: [...(Array.isArray(t.filters) ? t.filters : []), nextFilter],
+                filterType: 'none',
+                filterVisual: null,
               };
               return updatedTank;
             }),
@@ -346,7 +398,7 @@ export const useGameStore = create<GameState>()(
         return updatedTank;
       },
 
-      updateFilterPositionInActiveTank: (x, y) => {
+      updateFilterPositionInActiveTank: (filterId, x, y) => {
         const p = get().profile;
         if (!p || !p.activeTankId) return;
 
@@ -357,7 +409,11 @@ export const useGameStore = create<GameState>()(
               if (t.id !== p.activeTankId) return t;
               return {
                 ...t,
-                filterVisual: { x, y },
+                filters: (Array.isArray(t.filters) ? t.filters : []).map(filter =>
+                  filter.id === filterId
+                    ? { ...filter, visual: { x, y } }
+                    : filter
+                ),
               };
             }),
           },
@@ -430,7 +486,16 @@ export const useGameStore = create<GameState>()(
     }),
     {
       name: 'shrimp_game',
+      version: 2,
       partialize: (s) => ({ profile: s.profile }),
+      merge: (persistedState, currentState) => {
+        const persisted = persistedState as Partial<GameState>;
+        return {
+          ...currentState,
+          ...persisted,
+          profile: persisted.profile ? normalizeProfile(persisted.profile as PlayerProfile) : null,
+        };
+      },
     }
   )
 );

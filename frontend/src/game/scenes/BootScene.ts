@@ -327,5 +327,32 @@ export class BootScene extends Phaser.Scene {
 
       this.textures.addCanvas('filter_sponge_large', c);
     }
+
+    if (!this.textures.exists('filter_hob')) {
+      const c = document.createElement('canvas');
+      c.width = 34;
+      c.height = 28;
+      const ctx = c.getContext('2d')!;
+
+      ctx.fillStyle = '#2e343a';
+      ctx.fillRect(7, 4, 20, 14);
+      ctx.fillRect(5, 3, 24, 3);
+
+      ctx.fillStyle = '#4b535b';
+      ctx.fillRect(9, 7, 16, 8);
+
+      ctx.fillStyle = '#9aa3ad';
+      ctx.fillRect(20, 14, 3, 8);
+      ctx.fillRect(11, 17, 2, 7);
+
+      ctx.fillStyle = '#1f252a';
+      ctx.fillRect(8, 6, 1, 10);
+      ctx.fillRect(25, 6, 1, 10);
+
+      ctx.fillStyle = '#77d8ff';
+      ctx.fillRect(21, 20, 2, 4);
+
+      this.textures.addCanvas('filter_hob', c);
+    }
   }
 }

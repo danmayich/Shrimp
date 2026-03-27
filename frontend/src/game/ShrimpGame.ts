@@ -40,6 +40,7 @@ export interface PlantMovedEvent {
 }
 
 export interface FilterMovedEvent {
+  filterId: string;
   x: number;
   y: number;
 }

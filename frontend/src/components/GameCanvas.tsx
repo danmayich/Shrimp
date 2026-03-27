@@ -59,8 +59,8 @@ export function GameCanvas() {
     game.events.on(GAME_EVENTS.PLANT_MOVED, ({ plantId, x, y }: PlantMovedEvent) => {
       updatePlantPositionInActiveTank(plantId, x, y);
     });
-    game.events.on(GAME_EVENTS.FILTER_MOVED, ({ x, y }: FilterMovedEvent) => {
-      updateFilterPositionInActiveTank(x, y);
+    game.events.on(GAME_EVENTS.FILTER_MOVED, ({ filterId, x, y }: FilterMovedEvent) => {
+      updateFilterPositionInActiveTank(filterId, x, y);
     });
 
     return () => {

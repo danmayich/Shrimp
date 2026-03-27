@@ -5,7 +5,7 @@ import { STORE_BY_CATEGORY, STORE_ITEMS } from '../../game/data/storeItems';
 import { SHRIMP_VARIANTS } from '../../game/data/shrimpVariants';
 import type { StoreItem } from '../../game/data/storeItems';
 import { getGame, GAME_EVENTS } from '../../game/ShrimpGame';
-import type { FilterType } from '../../game/types';
+import type { InstalledFilterType } from '../../game/types';
 
 const CATEGORIES = [
   { id: 'tanks', label: '🪣 Tanks' },
@@ -74,7 +74,7 @@ export function ShopModal() {
     }
 
     if (item.category === 'equipment') {
-      const filterType = item.meta?.filterType as FilterType | undefined;
+      const filterType = item.meta?.filterType as InstalledFilterType | undefined;
 
       if (filterType && !profile!.activeTankId) {
         notify('Set up a tank first before installing filtration.', 'warning');

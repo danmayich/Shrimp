@@ -38,7 +38,7 @@ public class AuthController : ControllerBase
     {
         try
         {
-            var result = await _auth.LoginAsync(req);
+             var result = await _auth.LoginAsync(req);
             return Ok(result);
         }
         catch (ArgumentException ex)

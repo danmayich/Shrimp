@@ -11,7 +11,7 @@ import { GAME_EVENTS } from '../ShrimpGame';
 import type { TankTooltipData } from '../ShrimpGame';
 import { VARIANT_MAP } from '../data/shrimpVariants';
 import { STORE_ITEMS } from '../data/storeItems';
-import type { PlantState, ShrimpBehavior, ShrimpState } from '../types';
+import type { PlantState, ShrimpBehavior, ShrimpState, InstalledFilterState, InstalledFilterType, FilterVisualState } from '../types';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // TankScene — the main Phaser simulation
@@ -25,13 +25,14 @@ const PLANT_DRAG_TOP_PADDING = 12;
 const PLANT_DRAG_BOTTOM_PADDING = 6;
 const FILTER_DRAG_TOP_PADDING = 10;
 const FILTER_DRAG_BOTTOM_PADDING = 8;
+const FILTER_SLOT_X_FACTORS = [0.82, 0.18, 0.5, 0.68, 0.32, 0.9, 0.1] as const;
 
 export class TankScene extends Phaser.Scene {
   private tank!: TankState;
   private shrimpSprites: Map<string, ShrimpSprite> = new Map();
   private plantSprites: Map<string, Phaser.GameObjects.Image> = new Map();
-  private filterSprite: Phaser.GameObjects.Image | null = null;
-  private filterBubbleEvent: Phaser.Time.TimerEvent | null = null;
+  private filterSprites: Map<string, Phaser.GameObjects.Image> = new Map();
+  private filterBubbleEvents: Map<string, Phaser.Time.TimerEvent> = new Map();
   private foodSprites: Map<string, Phaser.GameObjects.Image> = new Map();
   private foodParticles: FoodParticleState[] = [];
   private bubbleParticles: Phaser.GameObjects.Image[] = [];
@@ -50,7 +51,7 @@ export class TankScene extends Phaser.Scene {
   private tankH = 0;
   private pinnedTooltipTarget: { kind: 'shrimp' | 'plant'; id: string } | null = null;
   private draggingPlantId: string | null = null;
-  private draggingFilter = false;
+  private draggingFilterId: string | null = null;
 
   constructor() {
     super({ key: 'TankScene' });
@@ -98,12 +99,12 @@ export class TankScene extends Phaser.Scene {
     this.children.removeAll(true);
     this.shrimpSprites.clear();
     this.plantSprites.clear();
-    this.filterSprite = null;
+    this.filterSprites.clear();
     this.foodSprites.clear();
     this.foodParticles = [];
     this.draggingPlantId = null;
-    this.draggingFilter = false;
-    this.stopFilterBubbleEmitter();
+    this.draggingFilterId = null;
+    this.stopAllFilterBubbleEmitters();
     this.clearPinnedTooltip();
 
     // Resize the Phaser canvas
@@ -127,7 +128,7 @@ export class TankScene extends Phaser.Scene {
     this.renderPlants();
 
     // Equipment visual
-    this.renderFilter();
+    this.renderFilters();
 
     // Glass glare
     const glareKey = `glass_glare_${tank.gallons}`;
@@ -370,10 +371,26 @@ export class TankScene extends Phaser.Scene {
     return {
       ...tank,
       params: { ...tank.params },
+      filters: (Array.isArray(tank.filters) ? tank.filters : []).map(filter => ({
+        ...filter,
+        visual: { ...filter.visual },
+      })),
       filterVisual: tank.filterVisual ? { ...tank.filterVisual } : null,
       plants: (tank.plants ?? []).map(plant => ({ ...plant })),
       shrimp: tank.shrimp.map(shrimp => ({ ...shrimp })),
     };
+  }
+
+  private getInstalledFilters(): InstalledFilterState[] {
+    if (Array.isArray(this.tank.filters) && this.tank.filters.length > 0) return this.tank.filters;
+    if (this.tank.filterType && this.tank.filterType !== 'none') {
+      return [{
+        id: 'legacy-filter',
+        type: this.tank.filterType,
+        visual: this.tank.filterVisual ?? this.getFilterDefaultPosition(0),
+      }];
+    }
+    return [];
   }
 
   private getPlantState(id: string): PlantState | undefined {
@@ -420,62 +437,66 @@ export class TankScene extends Phaser.Scene {
     return gameObject instanceof Phaser.GameObjects.Image && gameObject.getData('draggableKind') === 'filter';
   }
 
-  private getFilterTextureKey() {
-    if (this.tank.filterType === 'sponge_large') return 'filter_sponge_large';
-    if (this.tank.filterType === 'sponge') return 'filter_sponge_small';
+  private getFilterTextureKey(filterType: InstalledFilterType) {
+    if (filterType === 'sponge_large') return 'filter_sponge_large';
+    if (filterType === 'sponge') return 'filter_sponge_small';
+    if (filterType === 'hob') return 'filter_hob';
     return null;
   }
 
-  private getFilterDefaultPosition() {
+  private getFilterDefaultPosition(index: number) {
+    const slot = FILTER_SLOT_X_FACTORS[index] ?? FILTER_SLOT_X_FACTORS[index % FILTER_SLOT_X_FACTORS.length];
     return {
-      x: Math.round(this.tankW * 0.82),
+      x: Math.round(this.tankW * slot),
       y: this.substrateY + 4,
     };
   }
 
-  private ensureFilterPosition() {
-    if (!this.tank.filterVisual) {
-      this.tank.filterVisual = this.getFilterDefaultPosition();
+  private ensureFilterPosition(filter: InstalledFilterState, index: number): FilterVisualState {
+    if (!filter.visual) {
+      filter.visual = this.getFilterDefaultPosition(index);
     }
-    return this.tank.filterVisual;
+    return filter.visual;
   }
 
-  private renderFilter() {
-    this.filterSprite?.destroy();
-    this.filterSprite = null;
-    this.stopFilterBubbleEmitter();
+  private renderFilters() {
+    this.filterSprites.forEach(sprite => sprite.destroy());
+    this.filterSprites.clear();
+    this.stopAllFilterBubbleEmitters();
 
-    const textureKey = this.getFilterTextureKey();
-    if (!textureKey) return;
+    this.getInstalledFilters().forEach((filter, index) => {
+      const textureKey = this.getFilterTextureKey(filter.type);
+      if (!textureKey) return;
 
-    const pos = this.ensureFilterPosition();
-    const sprite = this.add.image(pos.x, pos.y, textureKey).setOrigin(0.5, 1);
-    sprite.setData('draggableKind', 'filter');
-    sprite.setInteractive({ useHandCursor: true, pixelPerfect: true });
-    this.input.setDraggable(sprite);
+      const pos = this.ensureFilterPosition(filter, index);
+      const sprite = this.add.image(pos.x, pos.y, textureKey).setOrigin(0.5, 1);
+      sprite.setData('draggableKind', 'filter');
+      sprite.setData('filterId', filter.id);
+      sprite.setInteractive({ useHandCursor: true, pixelPerfect: true });
+      this.input.setDraggable(sprite);
 
-    this.filterSprite = sprite;
-    this.startFilterBubbleEmitter();
+      this.filterSprites.set(filter.id, sprite);
+      this.startFilterBubbleEmitter(filter.id, sprite, filter.type);
+    });
   }
 
-  private getFilterBubbleOrigin() {
-    if (!this.filterSprite) return null;
-    const bubbleX = this.filterSprite.x;
-    const bubbleY = this.filterSprite.y - this.filterSprite.displayHeight + 4;
+  private getFilterBubbleOrigin(sprite: Phaser.GameObjects.Image, filterType: InstalledFilterType) {
+    const bubbleX = filterType === 'hob' ? sprite.x + 3 : sprite.x;
+    const bubbleY = filterType === 'hob'
+      ? sprite.y - sprite.displayHeight + 10
+      : sprite.y - sprite.displayHeight + 4;
     return { x: bubbleX, y: bubbleY };
   }
 
-  private startFilterBubbleEmitter() {
-    this.stopFilterBubbleEmitter();
-    const textureKey = this.getFilterTextureKey();
-    if (!this.filterSprite || !textureKey) return;
+  private startFilterBubbleEmitter(filterId: string, sprite: Phaser.GameObjects.Image, filterType: InstalledFilterType) {
+    this.stopFilterBubbleEmitter(filterId);
 
-    const delay = this.tank.filterType === 'sponge_large' ? 180 : 240;
-    this.filterBubbleEvent = this.time.addEvent({
+    const delay = filterType === 'sponge_large' ? 180 : filterType === 'hob' ? 150 : 240;
+    const event = this.time.addEvent({
       delay,
       loop: true,
       callback: () => {
-        const origin = this.getFilterBubbleOrigin();
+        const origin = this.getFilterBubbleOrigin(sprite, filterType);
         if (!origin) return;
 
         const b = this.add.image(
@@ -495,11 +516,18 @@ export class TankScene extends Phaser.Scene {
         });
       },
     });
+
+    this.filterBubbleEvents.set(filterId, event);
   }
 
-  private stopFilterBubbleEmitter() {
-    this.filterBubbleEvent?.remove();
-    this.filterBubbleEvent = null;
+  private stopFilterBubbleEmitter(filterId: string) {
+    this.filterBubbleEvents.get(filterId)?.remove();
+    this.filterBubbleEvents.delete(filterId);
+  }
+
+  private stopAllFilterBubbleEmitters() {
+    this.filterBubbleEvents.forEach(event => event.remove());
+    this.filterBubbleEvents.clear();
   }
 
   private handleDragStart(
@@ -507,7 +535,7 @@ export class TankScene extends Phaser.Scene {
     gameObject: Phaser.GameObjects.GameObject,
   ) {
     if (this.isFilterObject(gameObject)) {
-      this.draggingFilter = true;
+      this.draggingFilterId = gameObject.getData('filterId') as string | null;
       return;
     }
 
@@ -527,11 +555,18 @@ export class TankScene extends Phaser.Scene {
     dragY: number,
   ) {
     if (this.isFilterObject(gameObject)) {
+      const filterId = gameObject.getData('filterId') as string | undefined;
+      if (!filterId) return;
+
       const bounds = this.getFilterDragBounds(gameObject);
       const nextX = Math.round(Phaser.Math.Clamp(dragX, bounds.minX, bounds.maxX));
       const nextY = Math.round(Phaser.Math.Clamp(dragY, bounds.minY, bounds.maxY));
       gameObject.setPosition(nextX, nextY);
-      this.tank.filterVisual = { x: nextX, y: nextY };
+      this.tank.filters = this.getInstalledFilters().map(filter =>
+        filter.id === filterId
+          ? { ...filter, visual: { x: nextX, y: nextY } }
+          : filter
+      );
       return;
     }
 
@@ -562,8 +597,12 @@ export class TankScene extends Phaser.Scene {
     gameObject: Phaser.GameObjects.GameObject,
   ) {
     if (this.isFilterObject(gameObject)) {
-      this.draggingFilter = false;
+      const filterId = gameObject.getData('filterId') as string | undefined;
+      this.draggingFilterId = null;
+      if (!filterId) return;
+
       this.game.events.emit(GAME_EVENTS.FILTER_MOVED, {
+        filterId,
         x: Math.round(gameObject.x),
         y: Math.round(gameObject.y),
       });
@@ -818,7 +857,7 @@ export class TankScene extends Phaser.Scene {
   }
 
   shutdown() {
-    this.stopFilterBubbleEmitter();
+    this.stopAllFilterBubbleEmitters();
     this.emitTooltip(null);
   }
 }

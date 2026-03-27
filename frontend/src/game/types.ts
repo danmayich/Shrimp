@@ -15,6 +15,7 @@ export interface WaterParams {
 
 export type SubstrateType = 'inert' | 'active' | 'none';
 export type FilterType = 'sponge' | 'sponge_large' | 'hob' | 'none';
+export type InstalledFilterType = Exclude<FilterType, 'none'>;
 export type LightType = 'basic' | 'planted' | 'none';
 
 export interface PlantState {
@@ -31,6 +32,12 @@ export interface FilterVisualState {
   y: number;
 }
 
+export interface InstalledFilterState {
+  id: string;
+  type: InstalledFilterType;
+  visual: FilterVisualState;
+}
+
 export interface TankState {
   id: string;
   ownerId: string;
@@ -43,6 +50,8 @@ export interface TankState {
   cyclingDaysElapsed: number;
   /** Nitrogen cycle bacteria readiness 0..1 */
   bacteriaLevel: number;
+  filters: InstalledFilterState[];
+  /** Legacy persisted field kept optional for migration compatibility */
   filterType: FilterType;
   hasHeater: boolean;
   hasLight: boolean;
@@ -58,6 +67,7 @@ export interface TankState {
   tannins: number;      // 0..1 affects pH slightly
   plantCoverScore: number;  // 0..20 affects hiding/biofilm
   biofilmLevel: number;     // 0..1 fed by biofilm powder + plants + time
+  /** Legacy persisted field kept optional for migration compatibility */
   filterVisual: FilterVisualState | null;
   plants: PlantState[];
   shrimp: ShrimpState[];
